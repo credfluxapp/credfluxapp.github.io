@@ -194,7 +194,7 @@ function molduraFora(lado, recursos = '') {
       <p class="ac-rot">Gestão de crédito para quem empresta dinheiro</p>
       <h1>Clientes, créditos e parcelas em um só lugar</h1>
       <p class="ac-desc">Cadastre cada crédito com o valor, a taxa e a forma de pagamento. O CredFlux gera as parcelas, mostra o que vence e o que está em atraso e calcula quanto você vai receber por dia e por mês.</p>
-      ${recursos ? `<p class="ac-selo so-movel">${icone('escudo')}<span>Dados protegidos por criptografia, com total sigilo</span></p>` : ''}
+      <p class="ac-selo">${icone('escudo')}<span>Todos os dados são protegidos por criptografia, com segurança, discrição e total sigilo.</span></p>
     </section>
     <main class="ac-lado">${lado}</main>
     ${recursos ? `<section class="ac-rec">
@@ -210,13 +210,12 @@ function telaAcesso(modo = 'entrar', aviso = '') {
   const abas = [['entrar', 'Entrar'], ['criar', 'Criar acesso'], ['esqueci', 'Esqueci a senha']]
     .map(([m, t]) => `<button type="button" class="aba ${m === modo ? 'on' : ''}" data-a="acesso" data-m="${m}">${t}</button>`).join('');
   const botao = { entrar: 'Entrar', criar: 'Criar acesso', esqueci: 'Enviar link para nova senha' }[modo];
-  // O primeiro cartão, em destaque, é o de segurança e sigilo.
   const recursos = [
-    ['escudo', 'Dados protegidos e total sigilo', 'Todos os dados são protegidos por criptografia, com segurança, discrição e total sigilo. Cada conta só vê os próprios dados.', 'ac-seguro'],
-    ['agenda', 'Agenda e previsão de recebimentos', 'O que vence hoje, nos próximos dias e o que está em atraso, e quanto entra em cada dia e em cada mês.'],
+    ['agenda', 'Agenda de vencimentos', 'O que vence hoje, nos próximos dias e o que está em atraso, com filtro por período e cliente.'],
     ['aportes', 'Crédito com a sua regra', 'Pagamento único, só juros, parcelas iguais (Price), SAC ou parcelas definidas por você. Juros simples ou compostos.'],
+    ['grafico', 'Previsão de recebimentos', 'Quanto entra em cada dia dos próximos 30 dias e em cada um dos próximos 12 meses.'],
     ['clientes', 'Acesso para a equipe', 'Mais de uma pessoa na mesma conta, no celular ou no computador.'],
-  ].map(([i, t, d, cls]) => `<li${cls ? ` class="${cls}"` : ''}><span class="ac-ic">${icone(i)}</span><div><b>${t}</b><span>${d}</span></div></li>`).join('');
+  ].map(([i, t, d]) => `<li><span class="ac-ic">${icone(i)}</span><div><b>${t}</b><span>${d}</span></div></li>`).join('');
   molduraFora(`
     <div class="ac-topo"><a href="?demo" class="btn sec peq">Ver demonstração</a></div>
     <div class="ac-caixa">

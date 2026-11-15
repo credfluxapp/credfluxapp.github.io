@@ -373,8 +373,8 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
       return /gradient/.test(getComputedStyle(document.querySelector('.ac'),'::before').backgroundImage) && getComputedStyle(document.querySelector('.ac-marca h1')).color==='rgb(255, 255, 255)' && m.left===0 && m.right<=f.left && Math.round(m.top)===Math.round(f.top)})()`), 'Login em duas colunas com o painel escuro à esquerda');
     ok(await avaliar(`[...document.querySelectorAll('.ac-ic')].every(i=>getComputedStyle(i).color==='rgb(27, 33, 45)' && getComputedStyle(i.querySelector('svg')).strokeWidth==='2px')`),
       'Ícones do login escuros e mais grossos sobre o verde-limão');
-    ok(await avaliar(`(()=>{const l=document.querySelector('.ac-lista li'); return l.classList.contains('ac-seguro') && /protegidos por criptografia, com segurança, discrição e total sigilo/.test(l.textContent) && getComputedStyle(l.querySelector('b')).color==='rgb(200, 238, 68)'})()`),
-      'Primeiro cartão da tela de acesso: segurança e sigilo, em destaque');
+    ok(await visivel('.ac-selo') && /protegidos por criptografia, com segurança, discrição e total sigilo/.test(await avaliar(`document.querySelector('.ac-selo').textContent`)) && await avaliar(`document.querySelectorAll('.ac-lista li').length`) === 4,
+      'Faixa de segurança e sigilo abaixo da descrição, com os quatro cartões');
     await foto('d00_tela_inicial');
     await esquema('dark');
     await cdp('Page.navigate', { url: BASE }); await espera(2500);
