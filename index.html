@@ -8,6 +8,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="CredFlux">
   <title>CredFlux</title>
+  <!-- tema escuro ou claro antes da primeira pintura (automático segue o sistema; a escolha fica em Configurações › Aparência) -->
+  <script>try{var t=localStorage.getItem('credflux_tema')||'auto',e=t==='escuro'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.tema=e?'escuro':'claro';if(e)document.querySelector('meta[name="theme-color"]').content='#15171C'}catch(_){}</script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-192.png">

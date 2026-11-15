@@ -70,6 +70,10 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error' && !/favicon\.ico/.test(m.params.entry.url || '')) erros.push(m.params.entry.text + ' ' + (m.params.entry.url || ''));
   });
   await cdp('Page.enable'); await cdp('Runtime.enable'); await cdp('Log.enable');
+  // tema do sistema simulado: claro no começo (o automático segue esta escolha)
+  const esquema = v => cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: v }] });
+  const tok = v => avaliar(`getComputedStyle(document.documentElement).getPropertyValue('${v}').trim().toUpperCase()`);
+  await esquema('light');
 
   try {
     if (process.argv.includes('--icones')) {
@@ -90,7 +94,7 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     ok(await avaliar(`['--bg','--surface','--ink','--muted','--line','--brand-dark','--brand-dark-2','--brand','--brand-text','--danger'].map(v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim().toUpperCase()).join(' ')`)
       === '#FFFFFF #FFFFFF #1B212D #646F82 #F0F1F3 #1B212D #363A3F #C8EE44 #1E7F5A #C9302C', 'Tokens de cor no :root');
     ok(await estilo('.lateral', 'position') === 'fixed' && await avaliar(`Math.abs(document.querySelector('.lateral').getBoundingClientRect().bottom - innerHeight) < 1`), 'Menu fixo embaixo no celular');
-    ok(await avaliar(`document.querySelectorAll('.lateral .nav-it').length === 6 && [...document.querySelectorAll('.lateral .nav-it')].filter(e=>e.getClientRects().length).length === 5`), 'Menu de baixo com 5 itens (Ajuda fica em Ajustes)');
+    ok(await avaliar(`document.querySelectorAll('.lateral .nav-it').length === 7 && [...document.querySelectorAll('.lateral .nav-it')].filter(e=>e.getClientRects().length).length === 5`), 'Menu de baixo com 5 itens (Ajuda e tema ficam em Ajustes)');
     ok(await avaliar(`getComputedStyle(document.querySelector('.destaques')).gridTemplateColumns.split(' ').length === 1 && getComputedStyle(document.querySelector('.janelas')).gridTemplateColumns.split(' ').length === 1`), 'Cartões em uma coluna no celular');
     const nAtraso = await atrasosNoBanco();
     const cont = await avaliar(`document.querySelector('[data-v="agenda"] .nav-cont')?.firstChild?.textContent || ''`);
@@ -311,6 +315,38 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await clicar('[data-a="nav"][data-v="assinatura"]'); await espera(1000);
     await foto('d09_assinatura');
 
+    // Modo escuro: botão da barra lateral, Configurações › Aparência e o automático acompanhando o sistema
+    await clicar('[data-a="nav"][data-v="inicio"]'); await espera(300);
+    await clicar('.lateral [data-a="tema-alternar"]'); await espera(200);
+    ok(await avaliar(`document.documentElement.dataset.tema`) === 'escuro' && await tok('--bg') === '#15171C' && await avaliar(`localStorage.credflux_tema`) === 'escuro',
+      'Botão da barra lateral liga o modo escuro e guarda a escolha');
+    ok(await avaliar(`getComputedStyle(document.querySelector('.nav-it.on')).color`) === 'rgb(27, 33, 45)' && await avaliar(`getComputedStyle(document.querySelector('.pag-cab .tit')).color`) === 'rgb(242, 244, 247)',
+      'No escuro: texto claro e item ativo com texto escuro sobre o verde-limão');
+    ok(await avaliar(`/Modo claro/.test([...document.querySelectorAll('.nav-tema .nav-t')].filter(e=>e.getClientRects().length).map(e=>e.textContent).join())`), 'No escuro, o botão oferece o modo claro');
+    await foto('d10_inicio_escuro');
+    await clicar('[data-a="nav"][data-v="agenda"]'); await espera(300);
+    await foto('d11_agenda_escuro');
+    await clicar('[data-a="nav"][data-v="clientes"]'); await espera(300);
+    await clicar('[data-a="cli-ver"]'); await espera(500);
+    await foto('d12_cliente_escuro', false);
+    await clicar('#dlg [data-a="fechar"]');
+    await clicar('[data-a="nav"][data-v="mais"]'); await espera(300);
+    await clicar('[data-a="tema"][data-t="auto"]'); await espera(200);
+    ok(await avaliar(`document.documentElement.dataset.tema`) === 'claro' && await avaliar(`localStorage.credflux_tema`) === 'auto' && await avaliar(`document.querySelector('[data-a="tema"][data-t="auto"]').classList.contains('on')`),
+      'Automático com o sistema claro volta ao tema claro');
+    await esquema('dark'); await espera(300);
+    ok(await avaliar(`document.documentElement.dataset.tema`) === 'escuro', 'Automático acompanha o sistema quando ele muda para escuro');
+    await foto('d13_configuracoes_escuro');
+    await tela(375, 812, true);
+    await clicar('[data-a="nav"][data-v="inicio"]'); await espera(300);
+    ok(await transborda() <= 0, 'Início escuro sem rolagem lateral no celular');
+    await foto('m14_inicio_escuro');
+    await clicar('[data-a="rec-lista"]'); await espera(300);
+    await foto('m15_registrar_escuro', false);
+    await clicar('#dlg [data-a="fechar"]');
+    await esquema('light'); await espera(300);
+    ok(await avaliar(`document.documentElement.dataset.tema`) === 'claro', 'Sistema de volta ao claro, tema claro');
+
     // Novo cliente no celular
     await tela(375, 812, true);
     await clicar('[data-a="nav"][data-v="clientes"]'); await espera(300);
@@ -327,7 +363,17 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await cdp('Page.navigate', { url: BASE }); await espera(2500);
     ok(await avaliar(`(()=>{const m=document.querySelector('.ac-marca').getBoundingClientRect(), f=document.querySelector('.ac-lado').getBoundingClientRect();
       return /gradient/.test(getComputedStyle(document.querySelector('.ac'),'::before').backgroundImage) && getComputedStyle(document.querySelector('.ac-marca h1')).color==='rgb(255, 255, 255)' && m.left===0 && m.right<=f.left && Math.round(m.top)===Math.round(f.top)})()`), 'Login em duas colunas com o painel escuro à esquerda');
+    ok(await avaliar(`[...document.querySelectorAll('.ac-ic')].every(i=>getComputedStyle(i).color==='rgb(27, 33, 45)' && getComputedStyle(i.querySelector('svg')).strokeWidth==='2px')`),
+      'Ícones do login escuros e mais grossos sobre o verde-limão');
     await foto('d00_tela_inicial');
+    await esquema('dark');
+    await cdp('Page.navigate', { url: BASE }); await espera(2500);
+    ok(await avaliar(`document.documentElement.dataset.tema`) === 'escuro' && await avaliar(`getComputedStyle(document.querySelector('.ac-lado')).backgroundColor`) === 'rgb(29, 32, 38)',
+      'Login no tema escuro quando o sistema está escuro');
+    await foto('d00b_tela_inicial_escuro');
+    await tela(375, 812, true);
+    await cdp('Page.navigate', { url: BASE }); await espera(2500);
+    await foto('m00b_tela_inicial_escuro');
   } catch (e) {
     verif.push('FALHA ' + e.message);
   } finally {

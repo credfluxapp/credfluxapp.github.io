@@ -29,6 +29,23 @@ const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 // Valor curto para o gráfico: 4,2k; 1,5M; "-" quando não há nada.
 const abrev = v => (!v ? '-' : v >= 1e6 ? `${C.num(v / 1e6, 1)}M` : v >= 1000 ? `${C.num(v / 1000, 1)}k` : C.num(v, 0));
 
+// Tema: automático (segue o sistema), claro ou escuro. O index.html já marca data-tema antes da primeira pintura.
+const CHAVE_TEMA = 'credflux_tema';
+const temaPref = () => { try { return localStorage.getItem(CHAVE_TEMA) || 'auto'; } catch { return 'auto'; } };
+const temaSistema = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+function aplicarTema(pref = temaPref()) {
+  const escuro = pref === 'escuro' || (pref === 'auto' && Boolean(temaSistema?.matches));
+  document.documentElement.dataset.tema = escuro ? 'escuro' : 'claro';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', escuro ? '#15171C' : '#FFFFFF');
+}
+function escolherTema(pref) {
+  try { localStorage.setItem(CHAVE_TEMA, pref); } catch { /* sem armazenamento: vale só nesta visita */ }
+  aplicarTema(pref);
+  document.querySelectorAll('[data-a="tema"]').forEach(b => b.classList.toggle('on', b.dataset.t === pref));
+}
+temaSistema?.addEventListener?.('change', () => aplicarTema());
+aplicarTema();
+
 function toast(msg, tipo = '') {
   const t = document.createElement('div');
   t.className = 'toast ' + tipo; t.textContent = msg;
@@ -65,6 +82,8 @@ const ICON = {
   baixar: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
   alerta: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
   entrada: '<circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="m8 12 4 4 4-4"/>',
+  lua: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
 };
 const icone = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
 // Marca do CredFlux: um "C" que termina em seta (o crédito que volta), num quadrado verde.
@@ -273,6 +292,7 @@ function render() {
         <div class="nav-grupo"><p class="nav-rot">Conta</p>
           ${itemNav('mais', 'ajustes', '<span class="nav-t so-largo">Configurações</span><span class="nav-t so-movel">Ajustes</span>')}
           <button class="nav-it nav-ajuda" data-a="ajuda">${icone('ajuda')}<span class="nav-t">Ajuda</span></button>
+          <button class="nav-it nav-tema" data-a="tema-alternar"><span class="so-claro">${icone('lua')}<span class="nav-t">Modo escuro</span></span><span class="so-escuro">${icone('sol')}<span class="nav-t">Modo claro</span></span></button>
         </div>
       </nav>
       ${demo() ? '<div class="lateral-aviso"><p>Você está no modo demonstração. Os dados ficam só neste navegador.</p><a href="./" data-a="sair-demo">Criar conta de verdade →</a></div>' : ''}
@@ -806,6 +826,12 @@ function viewMais() {
       ${p.admin ? '<button class="btn sec" data-a="nav" data-v="admin">Painel do administrador</button>' : ''}
     </div>
   </section>
+  <section class="painel">
+    <h2>Aparência</h2>
+    <p class="dica">Automático segue o tema do celular ou do computador.</p>
+    <div class="seg" role="group" aria-label="Tema">${[['auto', 'Automático'], ['claro', 'Claro'], ['escuro', 'Escuro']]
+      .map(([t, r]) => `<button class="${temaPref() === t ? 'on' : ''}" data-a="tema" data-t="${t}">${r}</button>`).join('')}</div>
+  </section>
   <section class="painel" id="painel-pessoas"><h2>Pessoas com acesso</h2><p class="dica">Carregando…</p></section>
   ${painelAcordo()}
   <section class="painel">
@@ -1061,6 +1087,8 @@ const ACOES = {
   receber: d => abrirRecebimento(d.id),
   'rec-lista': () => abrirListaReceber(),
   ajuda: () => abrirAjuda(),
+  tema: d => escolherTema(d.t),
+  'tema-alternar': () => escolherTema(document.documentElement.dataset.tema === 'escuro' ? 'claro' : 'escuro'),
   'rec-modo': (d, el) => {
     const f = el.closest('form'); f.elements.modo.value = d.m;
     f.querySelectorAll('[data-a="rec-modo"]').forEach(b => b.classList.toggle('on', b === el));
