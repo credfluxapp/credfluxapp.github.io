@@ -9,7 +9,9 @@ function erro(e) {
   const m = e.message || String(e);
   const traduz = [
     [/Invalid login credentials/i, 'E-mail ou senha incorretos.'],
-    [/Email not confirmed/i, 'Confirme o e-mail pelo link que enviamos antes de entrar.'],
+    [/Email not confirmed/i, 'Confirme o e-mail com o código que enviamos.'],
+    [/Token has expired or is invalid|otp_expired|invalid.*(otp|token)/i, 'Código inválido ou vencido. Confira os números ou peça outro código.'],
+    [/only request this after|security purposes/i, 'Aguarde um minuto para pedir outro código.'],
     [/User already registered/i, 'Este e-mail já tem acesso. Use "Entrar" ou "Esqueci a senha".'],
     [/Password should be at least/i, 'A senha precisa de pelo menos 6 caracteres.'],
     [/row-level security|violates row-level/i, 'Sem permissão para gravar (assinatura vencida ou acesso limitado).'],
@@ -53,6 +55,10 @@ async function criarRemoto() {
       return { precisaConfirmar: !d.session };
     },
     async esqueci(email) { ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname })); },
+    // Confirmação do cadastro pelo código que chega no e-mail (modelo "Confirm signup" com {{ .Token }}).
+    // Dá certo: a sessão começa e o aoMudarAcesso recebe SIGNED_IN.
+    async confirmarCodigo(email, codigo) { ok(await sb.auth.verifyOtp({ email, token: codigo, type: 'email' })); },
+    async reenviarCodigo(email) { ok(await sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: location.origin + location.pathname } })); },
     async novaSenha(senha) { ok(await sb.auth.updateUser({ password: senha })); },
     async sair() { await sb.auth.signOut(); },
     async configPublica() {

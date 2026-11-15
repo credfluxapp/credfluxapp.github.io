@@ -204,18 +204,46 @@ function molduraFora(lado, recursos = '') {
   </div>`;
 }
 
+// Confirmação do cadastro dentro do CredFlux: o código chega por e-mail (credfluxapp@gmail.com) e é digitado aqui.
+function telaConfirmar(aviso = '') {
+  const email = S.emailConfirmar || '';
+  molduraFora(`
+    <div class="ac-topo"><a href="?demo" class="btn sec peq">Ver demonstração</a></div>
+    <div class="ac-caixa">
+      <div class="cartao">
+        <h2>Confirme seu e-mail</h2>
+        ${aviso ? `<p class="aviso">${esc(aviso)}</p>` : ''}
+        <p class="dica">${email ? `Enviamos um código de confirmação para <b>${esc(email)}</b>.` : 'Digite o e-mail cadastrado e o código de confirmação que chegou nele.'}
+          O e-mail vem do CredFlux (credfluxapp@gmail.com); se não aparecer, confira o spam.</p>
+        <form data-f="confirmar">
+          <label>E-mail<input name="email" type="email" autocomplete="email" required value="${esc(email)}"></label>
+          <label>Código de confirmação<input name="codigo" class="codigo" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" maxlength="10" required autofocus placeholder="000000"></label>
+          <button class="btn pri largo">Confirmar e entrar</button>
+        </form>
+        <div class="ac-links">
+          <button type="button" class="link" data-a="reenviar-codigo">Reenviar código</button>
+          <button type="button" class="link" data-a="acesso" data-m="criar">Usar outro e-mail</button>
+        </div>
+        <p class="dica">Se este e-mail já tiver acesso, use <button type="button" class="link" data-a="acesso" data-m="entrar">Entrar</button> ou <button type="button" class="link" data-a="acesso" data-m="esqueci">Esqueci a senha</button>.</p>
+      </div>
+    </div>`, RECURSOS_ACESSO());
+}
+
+const RECURSOS_ACESSO = () => [
+  ['agenda', 'Agenda de vencimentos', 'O que vence hoje, nos próximos dias e o que está em atraso, com filtro por período e cliente.'],
+  ['aportes', 'Crédito com a sua regra', 'Pagamento único, só juros, parcelas iguais (Price), SAC ou parcelas definidas por você. Juros simples ou compostos.'],
+  ['grafico', 'Previsão de recebimentos', 'Quanto entra em cada dia dos próximos 30 dias e em cada um dos próximos 12 meses.'],
+  ['clientes', 'Acesso para a equipe', 'Mais de uma pessoa na mesma conta, no celular ou no computador.'],
+].map(([i, t, d]) => `<li><span class="ac-ic">${icone(i)}</span><div><b>${t}</b><span>${d}</span></div></li>`).join('');
+
 function telaAcesso(modo = 'entrar', aviso = '') {
+  if (modo === 'confirmar') return telaConfirmar(aviso);
   const pub = S.publica || {};
   const preco = pub.preco_mensal ? moeda(Number(pub.preco_mensal)) : '';
   const abas = [['entrar', 'Entrar'], ['criar', 'Criar acesso'], ['esqueci', 'Esqueci a senha']]
     .map(([m, t]) => `<button type="button" class="aba ${m === modo ? 'on' : ''}" data-a="acesso" data-m="${m}">${t}</button>`).join('');
   const botao = { entrar: 'Entrar', criar: 'Criar acesso', esqueci: 'Enviar link para nova senha' }[modo];
-  const recursos = [
-    ['agenda', 'Agenda de vencimentos', 'O que vence hoje, nos próximos dias e o que está em atraso, com filtro por período e cliente.'],
-    ['aportes', 'Crédito com a sua regra', 'Pagamento único, só juros, parcelas iguais (Price), SAC ou parcelas definidas por você. Juros simples ou compostos.'],
-    ['grafico', 'Previsão de recebimentos', 'Quanto entra em cada dia dos próximos 30 dias e em cada um dos próximos 12 meses.'],
-    ['clientes', 'Acesso para a equipe', 'Mais de uma pessoa na mesma conta, no celular ou no computador.'],
-  ].map(([i, t, d]) => `<li><span class="ac-ic">${icone(i)}</span><div><b>${t}</b><span>${d}</span></div></li>`).join('');
+  const recursos = RECURSOS_ACESSO();
   molduraFora(`
     <div class="ac-topo"><a href="?demo" class="btn sec peq">Ver demonstração</a></div>
     <div class="ac-caixa">
@@ -226,9 +254,10 @@ function telaAcesso(modo = 'entrar', aviso = '') {
         <form data-f="acesso" data-m="${modo}">
           <label>E-mail<input name="email" type="email" autocomplete="email" required autofocus></label>
           ${modo !== 'esqueci' ? `<label>Senha<input name="senha" type="password" minlength="6" autocomplete="${modo === 'criar' ? 'new-password' : 'current-password'}" required></label>` : ''}
-          ${modo === 'criar' ? '<p class="dica">Use o e-mail que vai acessar o sistema. Se alguém incluiu você numa conta, use o mesmo e-mail que essa pessoa cadastrou.</p>' : ''}
+          ${modo === 'criar' ? '<p class="dica">Use o e-mail que vai acessar o sistema. Você vai receber nele um código de confirmação do CredFlux. Se alguém incluiu você numa conta, use o mesmo e-mail que essa pessoa cadastrou.</p>' : ''}
           <button class="btn pri largo">${botao}</button>
         </form>
+        ${modo !== 'esqueci' ? '<p class="dica centro">Já recebeu o código? <button type="button" class="link" data-a="acesso" data-m="confirmar">Confirmar e-mail</button></p>' : ''}
       </div>
       ${preco ? `<div class="preco"><div><b>${preco}</b><span>por mês, pago por Pix</span></div>${pub.dias_teste ? pill('verde', `${pub.dias_teste} dias de teste sem custo`) : ''}</div>` : ''}
       <p class="centro dica">Quer ver antes? <a href="?demo" class="link">Abrir a demonstração com dados de exemplo</a></p>
@@ -1083,6 +1112,13 @@ const ACOES = {
   nav: d => { fechar(); irPara(d.v); },
   fechar: () => fechar(),
   acesso: d => telaAcesso(d.m),
+  'reenviar-codigo': async (d, el) => {
+    const email = String($('form[data-f="confirmar"] [name=email]')?.value || S.emailConfirmar || '').trim();
+    if (!email) return toast('Digite o e-mail cadastrado.', 'erro');
+    S.emailConfirmar = email; el.disabled = true;
+    try { await tentar(() => S.store.reenviarCodigo(email), `Código reenviado para ${email}`); }
+    finally { setTimeout(() => { if (el.isConnected) el.disabled = false; }, 30000); }
+  },
   sair: async () => { await S.store.sair(); if (!demo()) location.hash = ''; },
   'sair-demo': async (d, el, ev) => { ev.preventDefault(); localStorage.removeItem(CHAVE_DEMO); location.href = location.pathname; },
   graf: d => { S.grafico = d.m; render(); },
@@ -1309,14 +1345,30 @@ const FORMS = {
   async acesso(fd, form) {
     const email = fd.get('email').trim(); const senha = fd.get('senha');
     const m = form.dataset.m;
-    if (m === 'entrar') await tentar(() => S.store.entrar(email, senha));
-    else if (m === 'criar') {
+    if (m === 'entrar') {
+      try { await S.store.entrar(email, senha); }
+      catch (e) {
+        // E-mail ainda não confirmado: manda um código novo e abre a tela do código.
+        if (/Confirme o e-mail/.test(e.message)) {
+          S.emailConfirmar = email;
+          S.store.reenviarCodigo(email).catch(() => {});
+          return telaAcesso('confirmar', 'Seu e-mail ainda não foi confirmado. Enviamos um código novo.');
+        }
+        toast(e.message || 'Erro', 'erro'); throw e;
+      }
+    } else if (m === 'criar') {
       const r = await tentar(() => S.store.criarAcesso(email, senha));
-      if (r.precisaConfirmar) telaAcesso('entrar', `Enviamos um link de confirmação para ${email}. Abra o e-mail, confirme e depois entre aqui.`);
+      if (r.precisaConfirmar) { S.emailConfirmar = email; telaAcesso('confirmar'); }
     } else {
       await tentar(() => S.store.esqueci(email));
       telaAcesso('entrar', `Se ${email} tiver acesso, chegará um link para criar uma nova senha.`);
     }
+  },
+  async confirmar(fd) {
+    const email = String(fd.get('email') || '').trim(); const codigo = soDigitos(fd.get('codigo'));
+    S.emailConfirmar = email;
+    await tentar(() => S.store.confirmarCodigo(email, codigo), 'E-mail confirmado');
+    // a sessão começa sozinha: aoMudarAcesso recebe SIGNED_IN e chama iniciarSessao
   },
   async 'nova-senha'(fd) {
     await tentar(() => S.store.novaSenha(fd.get('senha')), 'Senha alterada');

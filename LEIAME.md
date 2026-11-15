@@ -39,13 +39,27 @@ No Supabase, **Authentication › URL Configuration**:
 Sem isso, os links de confirmação e de nova senha mandam a pessoa para o lugar errado.
 
 ### 4. Primeiro acesso
-1. Abra o endereço, toque em **Criar acesso** com o seu e-mail, confirme pelo e-mail recebido e entre.
+1. Abra o endereço, toque em **Criar acesso** com o seu e-mail e digite o código de confirmação que chega por e-mail (depois do passo 5, ele vem de credfluxapp@gmail.com).
 2. Crie a sua conta de investidor.
-3. Em **Mais › Painel do administrador**, preencha o preço, os dias de teste, a chave Pix, o nome do recebedor e a cidade.
+3. Em **Configurações › Painel do administrador**, preencha o preço, os dias de teste, a chave Pix, o nome do recebedor e a cidade.
+
+### 5. E-mails do CredFlux (credfluxapp@gmail.com)
+Sem SMTP próprio, o Supabase só envia e-mails para quem é da equipe do projeto (os clientes não recebem nada) e no máximo 2 por hora. Com o Gmail do CredFlux, o código de confirmação e o link de nova senha saem de credfluxapp@gmail.com.
+1. **Senha de app do Google**: entre em credfluxapp@gmail.com › Conta do Google › Segurança › ligue a **Verificação em duas etapas** › **Senhas de app** › crie uma chamada "Supabase CredFlux" e copie a senha de 16 letras. Não guarde essa senha em arquivo nenhum.
+2. **Supabase › Authentication › Emails › SMTP Settings** › *Enable custom SMTP*:
+   - Sender email: `credfluxapp@gmail.com` · Sender name: `CredFlux`
+   - Host: `smtp.gmail.com` · Port: `465`
+   - Username: `credfluxapp@gmail.com` · Password: a senha de app do passo 1
+   - Minimum interval between emails: `60` segundos. Salve.
+3. **Supabase › Authentication › Emails › Templates**:
+   - *Confirm signup*: assunto "Seu código de confirmação do CredFlux"; no corpo, cole `supabase/emails/confirmar_cadastro.html`. O modelo manda o código (`{{ .Token }}`), que a pessoa digita na tela "Confirme seu e-mail" do CredFlux.
+   - *Reset Password*: assunto "Crie uma nova senha no CredFlux"; no corpo, cole `supabase/emails/nova_senha.html`.
+4. **Supabase › Authentication › Rate Limits**: suba o limite de e-mails por hora (o padrão com SMTP próprio é 30). O Gmail comum envia algumas centenas por dia; com muitos cadastros, troque por um serviço de e-mail transacional (Resend, Postmark, SendGrid).
+5. Em **Sign In / Providers › Email**, deixe *Confirm email* ligado e o código com 6 dígitos valendo 1 hora (*Email OTP Length* 6, *Email OTP Expiration* 3600).
 
 ## Como funciona a assinatura
 - Quem cria uma conta ganha os dias de teste definidos no painel.
-- Em **Mais › Assinatura**, o investidor escolhe 1, 3, 6 ou 12 meses, paga pelo QR Code (ou copia e cola) e toca em **Já paguei**.
+- Em **Configurações › Assinatura e pagamento**, o investidor escolhe 1, 3, 6 ou 12 meses, paga pelo QR Code (ou copia e cola) e toca em **Já paguei**.
 - No **Painel do administrador** aparece o pagamento com o valor e o código de identificação (ex.: `APT7DA679197849`), que também vai no Pix. Confira no extrato e toque em **Confirmar**: os meses somam à validade.
 - Assinatura vencida: a conta fica **só para leitura** (vê tudo, não grava), até o pagamento ser confirmado.
 - O administrador vê contas e pagamentos, nunca os clientes e aportes dos investidores.

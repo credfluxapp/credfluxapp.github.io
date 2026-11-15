@@ -376,6 +376,11 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     ok(await visivel('.ac-selo') && /protegidos por criptografia, com segurança, discrição e total sigilo/.test(await avaliar(`document.querySelector('.ac-selo').textContent`)) && await avaliar(`document.querySelectorAll('.ac-lista li').length`) === 4,
       'Faixa de segurança e sigilo abaixo da descrição, com os quatro cartões');
     await foto('d00_tela_inicial');
+    // Confirmação do cadastro pelo código do e-mail (só a tela; nada é enviado ao Supabase)
+    await clicar('[data-a="acesso"][data-m="confirmar"]'); await espera(300);
+    ok(await avaliar(`(()=>{const c=document.querySelector('form[data-f="confirmar"] input.codigo'); return !!c && c.autocomplete==='one-time-code' && c.inputMode==='numeric' && !!document.querySelector('[data-a="reenviar-codigo"]') && /credfluxapp@gmail\\.com/.test(document.querySelector('.cartao').textContent)})()`),
+      'Tela "Confirme seu e-mail" com o campo do código e o reenvio');
+    await foto('d00c_confirmar_email');
     await esquema('dark');
     await cdp('Page.navigate', { url: BASE }); await espera(2500);
     ok(await avaliar(`document.documentElement.dataset.tema`) === 'escuro' && await avaliar(`getComputedStyle(document.querySelector('.ac-lado')).backgroundColor`) === 'rgb(29, 32, 38)',
