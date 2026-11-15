@@ -83,6 +83,7 @@ const ICON = {
   alerta: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
   entrada: '<circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="m8 12 4 4 4-4"/>',
   lua: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  escudo: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
 };
 const icone = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
@@ -192,6 +193,7 @@ function molduraFora(lado, recursos = '') {
       <p class="ac-rot">Gestão de crédito para quem empresta dinheiro</p>
       <h1>Clientes, créditos e parcelas em um só lugar</h1>
       <p class="ac-desc">Cadastre cada crédito com o valor, a taxa e a forma de pagamento. O CredFlux gera as parcelas, mostra o que vence e o que está em atraso e calcula quanto você vai receber por dia e por mês.</p>
+      ${recursos ? `<p class="ac-selo so-movel">${icone('escudo')}<span>Dados protegidos por criptografia, com total sigilo</span></p>` : ''}
     </section>
     <main class="ac-lado">${lado}</main>
     ${recursos ? `<section class="ac-rec">
@@ -207,12 +209,13 @@ function telaAcesso(modo = 'entrar', aviso = '') {
   const abas = [['entrar', 'Entrar'], ['criar', 'Criar acesso'], ['esqueci', 'Esqueci a senha']]
     .map(([m, t]) => `<button type="button" class="aba ${m === modo ? 'on' : ''}" data-a="acesso" data-m="${m}">${t}</button>`).join('');
   const botao = { entrar: 'Entrar', criar: 'Criar acesso', esqueci: 'Enviar link para nova senha' }[modo];
+  // O primeiro cartão, em destaque, é o de segurança e sigilo.
   const recursos = [
-    ['agenda', 'Agenda de vencimentos', 'O que vence hoje, nos próximos dias e o que está em atraso, com filtro por período e cliente.'],
+    ['escudo', 'Dados protegidos e total sigilo', 'Todos os dados são protegidos por criptografia, com segurança, discrição e total sigilo. Cada conta só vê os próprios dados.', 'ac-seguro'],
+    ['agenda', 'Agenda e previsão de recebimentos', 'O que vence hoje, nos próximos dias e o que está em atraso, e quanto entra em cada dia e em cada mês.'],
     ['aportes', 'Crédito com a sua regra', 'Pagamento único, só juros, parcelas iguais (Price), SAC ou parcelas definidas por você. Juros simples ou compostos.'],
-    ['grafico', 'Previsão de recebimentos', 'Quanto entra em cada dia dos próximos 30 dias e em cada um dos próximos 12 meses.'],
     ['clientes', 'Acesso para a equipe', 'Mais de uma pessoa na mesma conta, no celular ou no computador.'],
-  ].map(([i, t, d]) => `<li><span class="ac-ic">${icone(i)}</span><div><b>${t}</b><span>${d}</span></div></li>`).join('');
+  ].map(([i, t, d, cls]) => `<li${cls ? ` class="${cls}"` : ''}><span class="ac-ic">${icone(i)}</span><div><b>${t}</b><span>${d}</span></div></li>`).join('');
   molduraFora(`
     <div class="ac-topo"><a href="?demo" class="btn sec peq">Ver demonstração</a></div>
     <div class="ac-caixa">
@@ -1210,6 +1213,8 @@ function abrirAjuda() {
   <div class="ajuda">
     <h3>Primeiros passos</h3>
     <p>Cadastre o cliente em <b>Clientes</b> e depois o crédito em <b>+ Novo crédito</b>, com o valor, a taxa e a forma de pagamento. O CredFlux gera as parcelas, e dá para ajustar a data e o valor de cada uma antes de gravar. Vencimento no domingo passa para a segunda.</p>
+    <h3>Segurança e sigilo</h3>
+    <p>Todos os dados são protegidos por criptografia, com segurança, discrição e total sigilo. A conexão com o CredFlux é sempre protegida (HTTPS) e as informações ficam criptografadas no armazenamento. Cada conta só acessa os próprios dados, e as senhas não ficam guardadas em texto. Os documentos dos clientes ficam numa pasta privada e só abrem por links temporários. O administrador do serviço vê apenas as contas e os pagamentos da assinatura, nunca os seus clientes e créditos. Na demonstração, os dados ficam só neste navegador.</p>
     <h3>Receber uma parcela</h3>
     <p>Use o botão de confirmar (✓) ao lado da parcela ou <b>Registrar recebimento</b>, no Início. Dá para receber a parcela inteira, só os juros ou outro valor; antes de confirmar, o sistema mostra como ficam o saldo e as próximas parcelas. O dinheiro paga primeiro a multa, depois os juros e por último o capital. Para corrigir, use <b>Desfazer</b> na Agenda ou no crédito.</p>
     <h3>Atrasos e multa</h3>

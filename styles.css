@@ -47,6 +47,9 @@
   --seg-on: #FFFFFF;                        /* aba ativa do seletor */
   --qr-bg: #FFFFFF;                         /* o QR Code fica sempre em fundo branco */
   --check-filtro: none;                     /* clareia o check verde no tema escuro */
+  --selo-bg: rgba(200, 238, 68, .12);       /* cartão de segurança e sigilo no painel escuro do login */
+  --selo-borda: rgba(200, 238, 68, .5);
+  --sombra-seguro: 0 14px 32px -16px rgba(200, 238, 68, .55);
   /* perigo */
   --danger: #C9302C;
   --danger-hover: #A82824;
@@ -642,6 +645,12 @@ body.fora #toasts { bottom: calc(var(--sp-24) + env(safe-area-inset-bottom)); }
 .ac-marca h1 { max-width: 18ch; margin-bottom: var(--sp-12); font-size: 28px; font-weight: 700; line-height: 1.15; letter-spacing: -.6px; color: var(--on-dark); }
 .ac-desc { max-width: 52ch; margin: 0; font-size: 15px; color: var(--on-dark-text); }
 .so-marca .ac-rot, .so-marca h1, .so-marca .ac-desc { display: none; }
+/* no celular, os cartões ficam abaixo do formulário: uma linha curta de segurança fica no topo */
+.ac-selo {
+  display: inline-flex; align-items: center; gap: var(--sp-8); margin: var(--sp-14) 0 0; padding: var(--sp-6) var(--sp-12);
+  border: 1px solid var(--selo-borda); border-radius: var(--r-pill); background: var(--selo-bg); color: var(--on-dark); font-size: 13px; font-weight: 600;
+}
+.ac-selo svg { flex-shrink: 0; width: 18px; height: 18px; color: var(--brand); stroke-width: 2; }
 .ac-lado { grid-area: lado; display: flex; flex-direction: column; padding: var(--sp-24) var(--sp-16); }
 .ac-topo { display: none; }
 .ac-caixa { display: flex; flex-direction: column; gap: var(--sp-12); width: 100%; max-width: 420px; margin: 0 auto; }
@@ -663,6 +672,8 @@ body.fora #toasts { bottom: calc(var(--sp-24) + env(safe-area-inset-bottom)); }
   background-color: var(--brand); background-image: var(--grad-logo); color: var(--on-brand);
 }
 .ac-ic svg { width: 20px; height: 20px; stroke-width: 2; }
+/* cartão de segurança e sigilo: o primeiro e em destaque */
+.ac-lista li.ac-seguro { background: var(--brand-soft); box-shadow: inset 0 0 0 1px var(--selo-borda); }
 .ac-pe { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-8); padding-top: var(--sp-16); font-size: 12px; color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -789,6 +800,8 @@ body.fora #toasts { bottom: calc(var(--sp-24) + env(safe-area-inset-bottom)); }
     background-color: var(--vidro-no-escuro);
   }
   .ac-lista b { color: var(--on-dark); }
+  .ac-lista li.ac-seguro { border-color: var(--selo-borda); background-color: var(--selo-bg); box-shadow: var(--sombra-seguro); }
+  .ac-lista li.ac-seguro b { color: var(--brand); }
   .ac-lista li > div > span { color: var(--on-dark-text); }
   .ac-pe { padding-top: var(--sp-16); border-top: 1px solid var(--vidro-no-escuro-borda); color: var(--on-dark-label); }
 }

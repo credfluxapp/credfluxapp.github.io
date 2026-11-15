@@ -282,7 +282,7 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await foto('d01c_receber', false);
     await clicar('#dlg [data-a="fechar"]');
     await clicar('.lateral [data-a="ajuda"]'); await espera(300);
-    ok(await avaliar(`document.getElementById('dlg').open && /Atrasos e multa/i.test(document.getElementById('dlg-corpo').textContent)`), 'Ajuda abre uma janela com o texto fixo');
+    ok(await avaliar(`document.getElementById('dlg').open && /Atrasos e multa/i.test(document.getElementById('dlg-corpo').textContent) && /Segurança e sigilo/.test(document.getElementById('dlg-corpo').textContent)`), 'Ajuda abre uma janela com o texto fixo, incluindo segurança e sigilo');
     await foto('d01d_ajuda', false);
     await clicar('#dlg [data-a="fechar"]');
     await clicar('[data-a="graf"][data-m="dias"]'); await espera(200);
@@ -365,6 +365,8 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
       return /gradient/.test(getComputedStyle(document.querySelector('.ac'),'::before').backgroundImage) && getComputedStyle(document.querySelector('.ac-marca h1')).color==='rgb(255, 255, 255)' && m.left===0 && m.right<=f.left && Math.round(m.top)===Math.round(f.top)})()`), 'Login em duas colunas com o painel escuro à esquerda');
     ok(await avaliar(`[...document.querySelectorAll('.ac-ic')].every(i=>getComputedStyle(i).color==='rgb(27, 33, 45)' && getComputedStyle(i.querySelector('svg')).strokeWidth==='2px')`),
       'Ícones do login escuros e mais grossos sobre o verde-limão');
+    ok(await avaliar(`(()=>{const l=document.querySelector('.ac-lista li'); return l.classList.contains('ac-seguro') && /protegidos por criptografia, com segurança, discrição e total sigilo/.test(l.textContent) && getComputedStyle(l.querySelector('b')).color==='rgb(200, 238, 68)'})()`),
+      'Primeiro cartão da tela de acesso: segurança e sigilo, em destaque');
     await foto('d00_tela_inicial');
     await esquema('dark');
     await cdp('Page.navigate', { url: BASE }); await espera(2500);

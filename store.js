@@ -184,7 +184,7 @@ function criarDemo() {
   const gravar = () => localStorage.setItem(CHAVE_DEMO, JSON.stringify(db));
   gravar();
   const usuario = { email: 'voce@exemplo.com' };
-  const config = { preco_mensal: 49.9, dias_teste: 15, chave_pix: 'demonstracao@exemplo.com', nome_recebedor: 'CredFlux', cidade: 'Imperatriz', contato: '' };
+  const config = { preco_mensal: 99.9, dias_teste: 30, chave_pix: 'demonstracao@exemplo.com', nome_recebedor: 'CredFlux', cidade: 'Imperatriz', contato: '' };
   return {
     modo: 'demo',
     async usuario() { return usuario; },
