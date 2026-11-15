@@ -1,4 +1,5 @@
-import { abrirStore, configurado } from './store.js';
+import { abrirStore, configurado, CHAVE_DEMO } from './store.js';
+import { gerarAcordoPDF, TERMOS_PADRAO } from './acordo.js';
 import * as C from './calc.js';
 import { pixCopiaECola } from './pix.js';
 
@@ -18,7 +19,9 @@ const mesCurto = ym => MES[+ym.slice(5, 7) - 1] + '/' + ym.slice(2, 4);
 const soma = (arr, f) => r2(arr.reduce((s, x) => s + (Number(f(x)) || 0), 0));
 const inicioMes = (s, k = 0) => { const d = parseISO(s); return toISO(new Date(d.getFullYear(), d.getMonth() + k, 1)); };
 const fimMes = (s, k = 0) => { const d = parseISO(s); return toISO(new Date(d.getFullYear(), d.getMonth() + k + 1, 0)); };
-const fmtTaxa = a => `${C.num(Number(a.taxa), 2)}% a.${a.taxa_periodo === 'ano' ? 'a.' : 'm.'}`;
+const fmtTaxa = a => a.modalidade === 'fixa' ? `${C.num(Number(a.taxa), 2)}% em ${C.prazoDias(a)} dias` : `${C.num(Number(a.taxa), 2)}% a.${a.taxa_periodo === 'ano' ? 'a.' : 'm.'}`;
+const tamanho = b => b >= 1048576 ? `${C.num(b / 1048576, 1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+const dataExtenso = s => { const d = parseISO(s); return `${d.getDate()} de ${MESL[d.getMonth()]} de ${d.getFullYear()}`; };
 const soDigitos = s => String(s || '').replace(/\D/g, '');
 
 function toast(msg, tipo = '') {
@@ -50,6 +53,11 @@ const ICON = {
   aportes: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
   mais: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
   grafico: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+  documento: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  imagem: '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+  enviar: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+  baixar: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  alerta: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
 };
 const icone = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
 // Marca do CredFlux: um "C" que termina em seta (o crédito que volta).
@@ -77,11 +85,12 @@ function indexar() {
   for (const p of S.dados.parcelas) {
     p.valor = Number(p.valor); p.juros = Number(p.juros); p.amortizacao = Number(p.amortizacao);
     if (p.valor_recebido != null) p.valor_recebido = Number(p.valor_recebido);
+    p.mora = Number(p.mora || 0);
     if (!S.parcPorAp.has(p.aporte_id)) S.parcPorAp.set(p.aporte_id, []);
     S.parcPorAp.get(p.aporte_id).push(p);
   }
   for (const l of S.parcPorAp.values()) l.sort((a, b) => a.num - b.num);
-  for (const a of S.dados.aportes) { a.valor = Number(a.valor); a.taxa = Number(a.taxa); }
+  for (const a of S.dados.aportes) { a.valor = Number(a.valor); a.taxa = Number(a.taxa); if (a.prazo_dias != null) a.prazo_dias = Number(a.prazo_dias); }
   S.dados.clientes.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
@@ -109,6 +118,8 @@ function resumoAporte(a) {
     proxima: pend[0],
     atrasadas: pend.filter(p => p.vencimento < h),
     quitado: ps.length > 0 && pend.length === 0,
+    dias: C.diasAtraso(ps, h),
+    mora: C.moraAte(a, ps, h),
   };
 }
 
@@ -122,6 +133,7 @@ function resumoCliente(c) {
     aReceber: soma(rs, r => r.aReceber),
     capital: soma(rs, r => r.capital),
     atraso: soma(rs, r => soma(r.atrasadas, p => p.valor)),
+    mora: soma(rs, r => r.mora),
   };
 }
 
@@ -258,6 +270,7 @@ function viewInicio() {
   const atraso = pend.filter(p => p.vencimento < h);
   const ini = inicioMes(h), fim = fimMes(h);
   const recMes = S.dados.parcelas.filter(p => p.recebido_em && p.recebido_em >= ini && p.recebido_em <= fim);
+  const moraTot = soma(S.dados.aportes, a => C.moraAte(a, S.parcPorAp.get(a.id) || [], h));
   const cards = [
     ['Hoje', entre(h, h), 'hoje', ''],
     ['Próximos 7 dias', entre(h, addDias(h, 7)), 'p7', ''],
@@ -265,7 +278,7 @@ function viewInicio() {
     ['Em atraso', atraso, 'atraso', atraso.length ? 'ruim' : ''],
   ].map(([t, ps, per, cls]) => `
     <button class="kpi ${cls}" data-a="agenda-ir" data-periodo="${per}">
-      <span class="kpi-t">${t}</span><b>${moeda(soma(ps, p => p.valor))}</b><span class="kpi-s">${ps.length} parcela${ps.length === 1 ? '' : 's'}</span>
+      <span class="kpi-t">${t}</span><b>${moeda(soma(ps, p => p.valor))}</b><span class="kpi-s">${ps.length} parcela${ps.length === 1 ? '' : 's'}${per === 'atraso' && moraTot ? ` · multa ${moeda(moraTot)}` : ''}</span>
     </button>`).join('');
   const sem = !S.dados.aportes.length;
   return `
@@ -329,7 +342,8 @@ function listaParcelas(ps, opts = {}) {
     const a = S.ap.get(p.aporte_id); const c = S.cli.get(a?.cliente_id);
     const st = C.statusParcela(p, h); const n = (S.parcPorAp.get(p.aporte_id) || []).length;
     const sub = [opts.semCliente ? null : `Parcela ${p.num}/${n}`,
-      p.recebido_em ? `recebida em ${dataBR(p.recebido_em)}` : `vence ${diaSem(p.vencimento)} ${dataBR(p.vencimento)}`].filter(Boolean).join(' · ');
+      p.recebido_em ? `recebida em ${dataBR(p.recebido_em)}${p.mora ? ` (multa ${moeda(p.mora)})` : ''}` : `vence ${diaSem(p.vencimento)} ${dataBR(p.vencimento)}`,
+      st === 'atrasada' ? `${C.diffDias(p.vencimento, h)} dia${C.diffDias(p.vencimento, h) === 1 ? '' : 's'} de atraso` : null].filter(Boolean).join(' · ');
     const acao = leitura() ? '' : p.recebido_em
       ? `<button class="btn peq sec" data-a="desfazer" data-id="${p.id}">Desfazer</button>`
       : `<button class="btn peq ok" data-a="receber" data-id="${p.id}">Receber</button>`;
@@ -448,14 +462,34 @@ function verCliente(id) {
     <div><span>Total em crédito</span><b>${moeda(r.investido)}</b></div>
     <div><span>A receber</span><b>${moeda(r.aReceber)}</b></div>
     <div><span>Capital em aberto</span><b>${moeda(r.capital)}</b></div>
-    <div class="${r.atraso ? 'ruim' : ''}"><span>Em atraso</span><b>${moeda(r.atraso)}</b></div>
+    <div class="${r.atraso ? 'ruim' : ''}"><span>Em atraso${r.mora ? ` (+ multa ${moeda(r.mora)})` : ''}</span><b>${moeda(r.atraso)}</b></div>
   </div>
   ${leitura() ? '' : `<div class="acoes">
     <button class="btn pri" data-a="ap-novo" data-cliente="${c.id}">+ Crédito</button>
     <button class="btn sec" data-a="cli-editar" data-id="${c.id}">Editar</button>
     <button class="btn perigo" data-a="cli-excluir" data-id="${c.id}">Excluir</button></div>`}
   <h3>Créditos</h3>
-  ${listaAportes(r.aps) || '<p class="dica">Nenhum crédito.</p>'}`);
+  ${listaAportes(r.aps) || '<p class="dica">Nenhum crédito.</p>'}
+  <div class="sec-cab"><h3>Documentos</h3>
+    ${leitura() ? '' : `<label class="btn peq sec arquivo">${icone('enviar')}Enviar arquivo<input type="file" data-in="doc-arquivo" data-cliente="${c.id}" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></label>`}</div>
+  <div id="docs-cli" data-cliente="${c.id}"><p class="dica">Carregando…</p></div>
+  <p class="dica">Contratos, recibos e documentos digitalizados. PDF ou foto, até ${demo() ? '2' : '10'} MB cada.</p>`);
+  carregarDocs(c.id);
+}
+
+async function carregarDocs(clienteId) {
+  const el = $('#docs-cli'); if (!el) return;
+  let docs;
+  try { docs = await S.store.documentos(clienteId); }
+  catch (e) { el.innerHTML = `<div class="vazio-p erro">${esc(e.message)} <button class="btn peq sec" data-a="docs-tentar" data-cliente="${clienteId}">Tentar de novo</button></div>`; return; }
+  if ($('#docs-cli')?.dataset.cliente !== clienteId) return;
+  S.docs = new Map(docs.map(d => [d.id, d]));
+  el.innerHTML = docs.length ? `<div class="lista">${docs.map(d => `<div class="item">
+      <span class="item-pr doc"><span class="doc-ic">${icone(/^image\//.test(d.tipo) ? 'imagem' : 'documento')}</span>
+        <span><span class="item-tit">${esc(d.nome)}</span><span class="item-sub">${tamanho(Number(d.tamanho) || 0)} · ${new Date(d.criado_em).toLocaleDateString('pt-BR')}</span></span></span>
+      <span class="item-ac"><button class="btn peq sec" data-a="doc-abrir" data-id="${d.id}">Abrir</button>
+        ${leitura() ? '' : `<button class="btn peq perigo" data-a="doc-excluir" data-id="${d.id}">Excluir</button>`}</span>
+    </div>`).join('')}</div>` : '<p class="vazio-p">Nenhum documento deste cliente.</p>';
 }
 
 function formCliente(id) {
@@ -523,8 +557,8 @@ function verAporte(id) {
   <div class="dlg-cab"><h2>Crédito de ${moeda(a.valor)}</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
   <p><button class="link" data-a="cli-ver" data-id="${c?.id}">${esc(c?.nome || '?')}</button> · ${dataBR(a.data_aporte)}</p>
   <div class="dados">
-    <div><span>Taxa</span>${fmtTaxa(a)}, juros ${a.regime}</div>
-    <div><span>Forma de pagamento</span>${C.MODALIDADES[a.modalidade]}${a.modalidade === 'unico' ? '' : ` · ${per}, ${a.n_parcelas} parcelas`}</div>
+    <div><span>Taxa</span>${a.modalidade === 'fixa' ? `${fmtTaxa(a)} (juros de ${moeda(r2(a.valor * a.taxa / 100))})` : `${fmtTaxa(a)}, juros ${a.regime}`}</div>
+    <div><span>Forma de pagamento</span>${C.MODALIDADES_CURTAS[a.modalidade]}${a.modalidade === 'unico' ? '' : a.modalidade === 'fixa' ? ` · ${r.ps.length} parcelas em ${C.prazoDias(a)} dias` : ` · ${per}, ${a.n_parcelas} parcelas`}</div>
     ${a.obs ? `<div><span>Observações</span>${esc(a.obs)}</div>` : ''}
   </div>
   <div class="mini-kpis">
@@ -533,9 +567,11 @@ function verAporte(id) {
     <div><span>Recebido</span><b>${moeda(r.recebido)}</b></div>
     <div><span>A receber</span><b>${moeda(r.aReceber)}</b></div>
   </div>
-  ${leitura() ? '' : `<div class="acoes">
-    <button class="btn sec" data-a="ap-editar" data-id="${a.id}">Editar</button>
-    <button class="btn perigo" data-a="ap-excluir" data-id="${a.id}">Excluir</button></div>`}
+  ${r.dias ? `<div class="banner ruim">${icone('alerta')}<span>${r.dias} dia${r.dias === 1 ? '' : 's'} de atraso desde ${dataBR(r.atrasadas[0].vencimento)}. Multa até hoje: <b>${moeda(r.mora)}</b> (${moeda(r2(C.moraDiaria(a, r.ps)))} por dia).</span></div>` : ''}
+  <div class="acoes">
+    <button class="btn sec" data-a="acordo" data-id="${a.id}">${icone('documento')}Acordo em PDF</button>
+    ${leitura() ? '' : `<button class="btn sec" data-a="ap-editar" data-id="${a.id}">Editar</button>
+    <button class="btn perigo" data-a="ap-excluir" data-id="${a.id}">Excluir</button>`}</div>
   <h3>Parcelas (${r.pagas}/${r.ps.length} recebidas)</h3>
   ${listaParcelas(r.ps, { semCliente: true })}`, true);
 }
@@ -547,6 +583,7 @@ function camposForm(form) {
     taxa: C.parseNum(g('taxa')) || 0, taxa_periodo: g('taxa_periodo'), regime: g('regime'),
     modalidade: g('modalidade'), periodicidade: g('periodicidade'),
     n_parcelas: Math.max(1, parseInt(g('n_parcelas'), 10) || 1), primeiro_venc: g('primeiro_venc'), obs: g('obs'),
+    prazo_dias: g('modalidade') === 'fixa' ? Math.max(1, parseInt(g('prazo_dias'), 10) || 30) : null,
   };
 }
 
@@ -556,7 +593,7 @@ function formAporte(id, clientePre) {
   const ps = a ? (S.parcPorAp.get(id) || []).map(p => ({ ...p })) : [];
   const h = hoje();
   const base = a ? { ...a, primeiro_venc: ps[0]?.vencimento || h }
-    : { cliente_id: clientePre || '', valor: '', data_aporte: h, taxa: '', taxa_periodo: 'mes', regime: 'compostos', modalidade: 'juros', periodicidade: 'mensal', n_parcelas: 12, primeiro_venc: C.vencimentoPadrao(h, 'mensal'), obs: '' };
+    : { cliente_id: clientePre || '', valor: '', data_aporte: h, taxa: '', taxa_periodo: 'mes', regime: 'compostos', modalidade: 'juros', periodicidade: 'mensal', n_parcelas: 12, prazo_dias: 30, primeiro_venc: C.vencimentoPadrao(h, 'mensal'), obs: '' };
   S.form = { id, parcelas: ps, vencManual: Boolean(a) };
   const opt = (v, t, sel) => `<option value="${v}" ${String(v) === String(sel) ? 'selected' : ''}>${esc(t)}</option>`;
   abrir(`
@@ -567,17 +604,19 @@ function formAporte(id, clientePre) {
       <label>Valor do crédito (R$)<input name="valor" inputmode="decimal" required value="${base.valor ? C.num(Number(base.valor)) : ''}" placeholder="10.000,00" autofocus></label>
       <label>Data do crédito<input name="data_aporte" type="date" required value="${base.data_aporte}"></label>
     </div>
-    <div class="col3">
-      <label>Taxa (%)<input name="taxa" inputmode="decimal" value="${base.taxa !== '' ? C.num(Number(base.taxa), 2) : ''}" placeholder="2,00"></label>
-      <label>Por<select name="taxa_periodo">${opt('mes', 'mês', base.taxa_periodo)}${opt('ano', 'ano', base.taxa_periodo)}</select></label>
-      <label>Juros<select name="regime">${opt('compostos', 'compostos', base.regime)}${opt('simples', 'simples', base.regime)}</select></label>
-    </div>
     <label>Como vai receber<select name="modalidade">${Object.entries(C.MODALIDADES).map(([k, t]) => opt(k, t, base.modalidade)).join('')}</select></label>
-    <div class="col3" id="linha-parc">
-      <label class="so-parc">Frequência<select name="periodicidade">${Object.entries(C.PERIODICIDADES).map(([k, p]) => opt(k, p.nome, base.periodicidade)).join('')}</select></label>
-      <label class="so-parc">Nº de parcelas<input name="n_parcelas" type="number" min="1" max="600" value="${base.n_parcelas}"></label>
-      <label><span id="rot-venc">1º vencimento</span><input name="primeiro_venc" type="date" required value="${base.primeiro_venc}"></label>
+    <div class="col3">
+      <label><span id="rot-taxa">Taxa (%)</span><input name="taxa" inputmode="decimal" value="${base.taxa !== '' ? C.num(Number(base.taxa), 2) : ''}" placeholder="2,00"></label>
+      <label class="nao-fixa">Por<select name="taxa_periodo">${opt('mes', 'mês', base.taxa_periodo)}${opt('ano', 'ano', base.taxa_periodo)}</select></label>
+      <label class="nao-fixa">Juros<select name="regime">${opt('compostos', 'compostos', base.regime)}${opt('simples', 'simples', base.regime)}</select></label>
+      <label class="so-fixa">Prazo (dias)<input name="prazo_dias" type="number" min="1" max="3650" value="${base.prazo_dias || 30}"></label>
     </div>
+    <div class="col3" id="linha-parc">
+      <label class="so-parc nao-fixa">Frequência<select name="periodicidade">${Object.entries(C.PERIODICIDADES).map(([k, p]) => opt(k, p.nome, base.periodicidade)).join('')}</select></label>
+      <label class="so-parc">Nº de parcelas<input name="n_parcelas" type="number" min="1" max="600" value="${base.n_parcelas}"></label>
+      <label class="nao-fixa"><span id="rot-venc">1º vencimento</span><input name="primeiro_venc" type="date" required value="${base.primeiro_venc}"></label>
+    </div>
+    <p class="dica so-fixa" id="dica-fixa"></p>
     <label>Observações<textarea name="obs" rows="2">${esc(base.obs)}</textarea></label>
     <div id="previa"></div>
     <div class="acoes fixas"><button class="btn pri">Gravar crédito</button><button type="button" class="btn sec" data-a="fechar">Cancelar</button></div>
@@ -588,14 +627,20 @@ function formAporte(id, clientePre) {
 function ajustarFormAporte(regerar) {
   const form = $('#f-aporte'); if (!form) return;
   const c = camposForm(form);
-  const unico = c.modalidade === 'unico';
+  const unico = c.modalidade === 'unico', fixa = c.modalidade === 'fixa';
   form.querySelectorAll('.so-parc').forEach(el => { el.hidden = unico; });
+  form.querySelectorAll('.nao-fixa').forEach(el => { if (fixa) el.hidden = true; else if (!el.classList.contains('so-parc') || !unico) el.hidden = false; });
+  form.querySelectorAll('.so-fixa').forEach(el => { el.hidden = !fixa; });
+  form.elements.primeiro_venc.required = !fixa;
   $('#rot-venc').textContent = unico ? 'Vencimento' : '1º vencimento';
+  $('#rot-taxa').textContent = fixa ? 'Juros no prazo (%)' : 'Taxa (%)';
+  if (fixa && c.valor > 0) $('#dica-fixa').textContent = `${moeda(c.valor)} + ${C.num(c.taxa, 2)}% = ${moeda(r2(c.valor * (1 + c.taxa / 100)))} em ${c.prazo_dias} dias, dividido em ${c.n_parcelas} parcela${c.n_parcelas === 1 ? '' : 's'} espalhadas no prazo. Em atraso, multa de ${moeda(r2(c.valor * c.taxa / 100 / 30))} por dia.`;
+  else if (fixa) $('#dica-fixa').textContent = 'Exemplo: R$ 1.000 a 10% em 30 dias = R$ 1.100, em 11 parcelas de R$ 100 ou 20 de R$ 55.';
   if (regerar) {
     const antigas = new Map(S.form.parcelas.map(p => [p.num, p]));
     S.form.parcelas = C.gerarParcelas(c).map(p => {
       const o = antigas.get(p.num);
-      return o?.recebido_em ? { ...p, recebido_em: o.recebido_em, valor_recebido: o.valor_recebido, obs: o.obs } : p;
+      return o?.recebido_em ? { ...p, recebido_em: o.recebido_em, valor_recebido: o.valor_recebido, mora: o.mora || 0, obs: o.obs } : p;
     });
   }
   previaAporte(c);
@@ -642,6 +687,7 @@ function viewMais() {
     </div>
   </section>
   <section class="painel" id="painel-pessoas"><h2>Pessoas com acesso</h2><p class="dica">Carregando…</p></section>
+  ${painelAcordo()}
   <section class="painel">
     <h2>Exportar</h2>
     <p class="dica">Cópia dos seus dados para guardar ou abrir no Excel.</p>
@@ -655,6 +701,28 @@ function viewMais() {
     <p class="dica">Android (Chrome): menu ⋮ › Adicionar à tela inicial. iPhone (Safari): botão Compartilhar › Adicionar à Tela de Início.</p>
   </section>
   <button class="btn sec largo" data-a="sair">Sair</button>`;
+}
+
+function painelAcordo() {
+  const c = S.perfil.conta || {}; const pode = ehDono() && !leitura();
+  const dis = pode ? '' : 'disabled';
+  return `<section class="painel">
+    <h2>Dados do acordo em PDF</h2>
+    <p class="dica">Entram no acordo de pagamento gerado em cada crédito.${pode ? '' : ' Só o dono da conta altera.'}</p>
+    <form data-f="acordo" class="form">
+      <div class="col2">
+        <label>Nome do credor<input name="credor_nome" value="${esc(c.credor_nome)}" placeholder="${esc(c.nome || '')}" ${dis}></label>
+        <label>CPF/CNPJ do credor<input name="credor_doc" value="${esc(c.credor_doc)}" inputmode="numeric" ${dis}></label>
+      </div>
+      <div class="col2">
+        <label>Endereço<input name="credor_endereco" value="${esc(c.credor_endereco)}" ${dis}></label>
+        <label>Cidade do foro<input name="credor_cidade" value="${esc(c.credor_cidade)}" placeholder="Ex.: Imperatriz/MA" ${dis}></label>
+      </div>
+      <label>Termos do acordo (uma cláusula por linha; {cidade} vira a cidade do foro)<textarea name="termos_acordo" rows="8" ${dis}>${esc(c.termos_acordo || TERMOS_PADRAO)}</textarea></label>
+      <p class="nota">${icone('alerta')}<span>Modelo de referência, não é orientação jurídica. Juros entre particulares têm limites legais (Lei de Usura, Decreto 22.626/1933, e Código Civil). Revise os termos com um advogado antes de usar.</span></p>
+      ${pode ? '<div class="acoes"><button class="btn pri">Gravar dados do acordo</button><button type="button" class="btn sec" data-a="termos-padrao">Voltar ao texto padrão</button></div>' : ''}
+    </form>
+  </section>`;
 }
 
 async function carregarPessoas() {
@@ -808,9 +876,40 @@ function irPara(v) {
   const pos = POS[v]; if (pos && S.perfil?.membro) pos().catch(e => toast(e.message, 'erro'));
 }
 
+// Acordo em PDF -----------------------------------------------------------------------
+async function montarAcordo(id) {
+  const a = S.ap.get(id); const c = S.cli.get(a.cliente_id) || {}; const conta = S.perfil.conta || {};
+  const r = resumoAporte(a); const h = hoje();
+  const per = C.PERIODICIDADES[a.periodicidade]?.nome?.toLowerCase() || '';
+  const forma = a.modalidade === 'fixa' ? `${r.ps.length} parcela${r.ps.length === 1 ? '' : 's'} em ${C.prazoDias(a)} dias`
+    : a.modalidade === 'unico' ? 'pagamento único no vencimento' : `${C.MODALIDADES[a.modalidade]}, ${per}, ${r.ps.length} parcelas`;
+  const encargo = a.modalidade === 'fixa'
+    ? `${moeda(r2(C.moraDiaria(a, r.ps)))} por dia (juros do contrato ÷ 30)`
+    : `juros de um mês sobre o saldo devedor ÷ 30, por dia (hoje ${moeda(r2(C.moraDiaria(a, r.ps)))})`;
+  const condicoes = [
+    ['Valor do crédito', moeda(a.valor)], ['Data do crédito', dataBR(a.data_aporte)],
+    ['Taxa de juros', a.modalidade === 'fixa' ? fmtTaxa(a) : `${fmtTaxa(a)}, juros ${a.regime}`], ['Forma de pagamento', forma],
+    ['Total previsto', moeda(r.total)], ['Já recebido', moeda(r.recebido)], ['Saldo a receber', moeda(r.aReceber)],
+    ['Encargo por atraso', encargo],
+  ];
+  if (r.mora) condicoes.push(['Multa em aberto hoje', `${moeda(r.mora)} (${r.dias} dia${r.dias === 1 ? '' : 's'} de atraso)`]);
+  const sit = p => p.recebido_em ? `Recebida ${dataCurta(p.recebido_em)}` : p.vencimento < h ? 'Em atraso' : 'A vencer';
+  const blob = await gerarAcordoPDF({
+    numero: `${a.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`, emitido: dataBR(h),
+    credor: { nome: conta.credor_nome || conta.nome, doc: conta.credor_doc, endereco: conta.credor_endereco },
+    devedor: { nome: c.nome, doc: c.documento, telefone: c.telefone, email: c.email },
+    condicoes,
+    parcelas: r.ps.map(p => [String(p.num), dataBR(p.vencimento), moeda(p.valor), moeda(p.juros), moeda(p.amortizacao), sit(p)]),
+    totais: ['', 'Total', moeda(r.total), moeda(soma(r.ps, p => p.juros)), moeda(soma(r.ps, p => p.amortizacao)), ''],
+    termos: conta.termos_acordo || TERMOS_PADRAO, cidade: conta.credor_cidade, dataExtenso: dataExtenso(h),
+  });
+  const slug = norm(c.nome).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'cliente';
+  return { blob, nome: `acordo_${slug}_${h}.pdf`, a };
+}
+
 // Exportação ------------------------------------------------------------------------
 function baixar(nome, conteudo, tipo) {
-  const blob = new Blob([conteudo], { type: tipo });
+  const blob = conteudo instanceof Blob ? conteudo : new Blob([conteudo], { type: tipo });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
@@ -832,28 +931,21 @@ const ACOES = {
   fechar: () => fechar(),
   acesso: d => telaAcesso(d.m),
   sair: async () => { await S.store.sair(); if (!demo()) location.hash = ''; },
-  'sair-demo': async (d, el, ev) => { ev.preventDefault(); localStorage.removeItem('aportes_demo_v1'); location.href = location.pathname; },
+  'sair-demo': async (d, el, ev) => { ev.preventDefault(); localStorage.removeItem(CHAVE_DEMO); location.href = location.pathname; },
   graf: d => { S.grafico = d.m; render(); },
   'agenda-ir': d => {
     S.f = { ...S.f, periodo: d.periodo, de: d.de || '', ate: d.ate || '', situacao: d.situacao || 'pendente', cliente: '' };
     irPara('agenda');
   },
-  receber: d => {
-    const p = S.dados.parcelas.find(x => x.id === d.id); if (!p) return;
-    const c = clienteDe(p);
-    abrir(`<div class="dlg-cab"><h2>Registrar recebimento</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
-      <p>${esc(c?.nome)} · parcela ${p.num} · vencimento ${dataBR(p.vencimento)}</p>
-      <form data-f="receber" data-id="${p.id}" class="form">
-        <div class="col2">
-          <label>Recebido em<input name="data" type="date" required value="${hoje()}"></label>
-          <label>Valor recebido (R$)<input name="valor" inputmode="decimal" required value="${C.num(p.valor)}"></label>
-        </div>
-        <label>Observação<input name="obs" placeholder="opcional"></label>
-        <div class="acoes"><button class="btn ok" autofocus>Confirmar recebimento</button><button type="button" class="btn sec" data-a="fechar">Cancelar</button></div>
-      </form>`);
+  receber: d => abrirRecebimento(d.id),
+  'rec-modo': (d, el) => {
+    const f = el.closest('form'); f.elements.modo.value = d.m;
+    f.querySelectorAll('[data-a="rec-modo"]').forEach(b => b.classList.toggle('on', b === el));
+    previaRecebimento(el, true);
+    if (d.m === 'outro') { f.elements.valor.focus(); f.elements.valor.select(); }
   },
   desfazer: async d => {
-    if (!confirm('Desfazer o recebimento desta parcela?')) return;
+    if (!confirm('Desfazer o recebimento desta parcela?\n\nSe o valor recebido foi diferente do valor da parcela, as parcelas seguintes já foram recalculadas e não voltam sozinhas: confira o crédito e edite se precisar.')) return;
     await tentar(() => S.store.desfazer(d.id), 'Recebimento desfeito');
     const aberto = dlg().open; await recarregar(); if (aberto) reabrirDetalhe(d.id);
   },
@@ -900,6 +992,44 @@ const ACOES = {
     if (!confirm('Marcar como não localizado? O investidor poderá informar de novo.')) return;
     await tentar(() => S.store.confirmarPagamento(d.id, false), 'Marcado como não localizado'); posAdmin();
   },
+  'docs-tentar': d => carregarDocs(d.cliente),
+  'doc-abrir': async d => {
+    const doc = S.docs?.get(d.id); if (!doc) return;
+    const w = window.open('', '_blank');
+    try { const url = await S.store.abrirDocumento(doc); if (w) w.location = url; else location.href = url; }
+    catch (e) { w?.close(); toast(e.message, 'erro'); }
+  },
+  'doc-excluir': async d => {
+    const doc = S.docs?.get(d.id); if (!doc) return;
+    if (!confirm(`Excluir o documento "${doc.nome}"?`)) return;
+    await tentar(() => S.store.excluirDocumento(doc), 'Documento excluído');
+    carregarDocs(doc.cliente_id);
+  },
+  acordo: d => {
+    const a = S.ap.get(d.id); if (!a) return;
+    abrir(`<div class="dlg-cab"><h2>Acordo em PDF</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
+      <p>Gera o instrumento particular de acordo com as condições, a tabela de parcelas e os termos definidos em Mais › Dados do acordo.</p>
+      ${S.perfil.conta?.credor_nome ? '' : '<p class="nota">' + icone('alerta') + '<span>Os dados do credor ainda não foram preenchidos (Mais › Dados do acordo). O PDF sai com espaços em branco para completar à mão.</span></p>'}
+      <div class="acoes">
+        <button class="btn pri" data-a="acordo-gerar" data-id="${a.id}">${icone('baixar')}Baixar PDF</button>
+        ${leitura() ? '' : `<button class="btn sec" data-a="acordo-gerar" data-id="${a.id}" data-guardar="1">Baixar e guardar nos documentos do cliente</button>`}
+        <button class="btn sec" data-a="ap-ver" data-id="${a.id}">Voltar</button>
+      </div>`);
+  },
+  'acordo-gerar': async (d, el) => {
+    el.disabled = true;
+    try {
+      const { blob, nome, a } = await montarAcordo(d.id);
+      baixar(nome, blob, 'application/pdf');
+      if (d.guardar) {
+        const arq = new File([blob], nome, { type: 'application/pdf' });
+        await tentar(() => S.store.enviarDocumento(S.perfil.conta?.id || S.perfil.membro?.conta_id, a.cliente_id, arq, `Acordo ${dataBR(hoje())} - crédito de ${moeda(a.valor)}.pdf`), 'Acordo gerado e guardado nos documentos');
+      } else toast('Acordo gerado', 'ok');
+      verAporte(a.id);
+    } catch (e) { toast(e.message || 'Não foi possível gerar o PDF', 'erro'); }
+    finally { if (el.isConnected) el.disabled = false; }
+  },
+  'termos-padrao': (d, el) => { el.closest('form').elements.termos_acordo.value = TERMOS_PADRAO; },
   'conta-validade': d => abrir(`<div class="dlg-cab"><h2>Validade da assinatura</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
     <p>${esc(d.nome)}</p>
     <form data-f="validade" data-id="${d.id}" class="form">
@@ -907,6 +1037,73 @@ const ACOES = {
       <div class="acoes"><button class="btn pri">Gravar</button><button type="button" class="btn sec" data-a="fechar">Cancelar</button></div>
     </form>`),
 };
+
+function abrirRecebimento(id) {
+  const p = S.dados.parcelas.find(x => x.id === id); if (!p) return;
+  const a = S.ap.get(p.aporte_id); const c = S.cli.get(a?.cliente_id);
+  const n = (S.parcPorAp.get(p.aporte_id) || []).length;
+  abrir(`<div class="dlg-cab"><h2>Registrar recebimento</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
+    <p>${esc(c?.nome)} · parcela ${p.num}/${n} · vence ${dataBR(p.vencimento)} · <b>${moeda(p.valor)}</b> (juros ${moeda(p.juros)})</p>
+    <form data-f="receber" data-id="${p.id}" class="form">
+      <input type="hidden" name="modo" value="inteira">
+      <div class="seg largo" role="group" aria-label="Quanto recebeu">
+        <button type="button" class="on" data-a="rec-modo" data-m="inteira">Parcela inteira</button>
+        <button type="button" data-a="rec-modo" data-m="juros">Só os juros</button>
+        <button type="button" data-a="rec-modo" data-m="outro">Outro valor</button>
+      </div>
+      <div class="col2">
+        <label>Recebido em<input name="data" type="date" required value="${hoje()}"></label>
+        <label>Valor recebido (R$)<input name="valor" inputmode="decimal" required value="${C.num(p.valor)}"></label>
+      </div>
+      <label class="marcar" id="rec-mora-l"><input type="checkbox" name="cobrar_mora" checked><span id="rec-mora-t"></span></label>
+      <div id="rec-previa"></div>
+      <label>Observação<input name="obs" placeholder="opcional"></label>
+      <div class="acoes"><button class="btn ok" autofocus>Confirmar recebimento</button><button type="button" class="btn sec" data-a="fechar">Cancelar</button></div>
+    </form>`);
+  previaRecebimento($('form[data-f="receber"]'), true);
+}
+
+// Calcula a multa e o efeito do valor nas parcelas. preencher: põe no campo o valor do modo escolhido.
+function calcRecebimento(form, preencher) {
+  const p = S.dados.parcelas.find(x => x.id === form.dataset.id); const a = S.ap.get(p.aporte_id);
+  const ps = S.parcPorAp.get(p.aporte_id) || [];
+  const data = form.elements.data.value || hoje();
+  const moraCalc = C.moraAte(a, ps, data);
+  const cobra = moraCalc > 0 && form.elements.cobrar_mora.checked;
+  const mora = cobra ? moraCalc : 0;
+  const modo = form.elements.modo.value;
+  if (preencher && modo !== 'outro') form.elements.valor.value = C.num(r2((modo === 'juros' ? p.juros : p.valor) + mora));
+  const valor = C.parseNum(form.elements.valor.value);
+  let res = null, erro = '';
+  if (valor >= 0) { try { res = C.aplicarRecebimento(a, ps, p.id, data, r2(valor), mora); } catch (e) { erro = e.message; } }
+  return { p, a, ps, data, moraCalc, mora, valor, res, erro, dias: C.diasAtraso(ps, data) };
+}
+
+function previaRecebimento(el, preencher = false) {
+  const form = el.closest ? (el.closest('form[data-f="receber"]') || el) : el; if (!form?.elements?.valor) return;
+  if (el.name === 'valor') { form.elements.modo.value = 'outro'; form.querySelectorAll('[data-a="rec-modo"]').forEach(b => b.classList.toggle('on', b.dataset.m === 'outro')); }
+  const k = calcRecebimento(form, preencher || el.name === 'data' || el.name === 'cobrar_mora');
+  const ml = $('#rec-mora-l'); ml.hidden = !(k.moraCalc > 0);
+  $('#rec-mora-t').innerHTML = `Cobrar multa de atraso: <b>${moeda(k.moraCalc)}</b> (${k.dias} dia${k.dias === 1 ? '' : 's'} × ${moeda(r2(C.moraDiaria(k.a, k.ps)))})`;
+  const el2 = $('#rec-previa');
+  if (!(k.valor >= 0)) { el2.innerHTML = '<p class="erro-campo">Informe um valor válido.</p>'; return; }
+  if (k.erro) { el2.innerHTML = `<p class="erro-campo">${esc(k.erro)}.</p>`; return; }
+  const pago = r2(k.valor - k.mora);
+  const juros = r2(Math.min(pago, k.p.juros)), capital = r2(pago - k.p.juros);
+  const linhas = [k.mora ? ['Multa de atraso', k.mora] : null, ['Juros da parcela', juros],
+    capital >= 0 ? ['Capital (abate o saldo)', capital] : ['Juros que faltaram (somam ao saldo)', -capital]].filter(Boolean);
+  let efeito = '';
+  if (k.res?.refeitas) {
+    const prox = k.res.parcelas.filter(x => !x.recebido_em).sort((x, y) => x.vencimento.localeCompare(y.vencimento));
+    const saldo = soma(prox, x => x.amortizacao);
+    efeito = prox.length
+      ? `O valor é diferente da parcela: o saldo devedor passa a <b>${moeda(saldo)}</b> e ${prox.length === 1 ? 'a próxima parcela fica' : `as ${prox.length} parcelas seguintes são refeitas; a próxima fica`} em <b>${moeda(prox[0].valor)}</b>, vencendo ${dataBR(prox[0].vencimento)}.`
+      : 'Com este valor o crédito fica quitado.';
+  } else efeito = 'As outras parcelas não mudam.';
+  el2.innerHTML = `<div class="conta-linhas">${linhas.map(([t, v]) => `<div><span>${t}</span><b>${moeda(v)}</b></div>`).join('')}
+    <div class="total"><span>Total recebido</span><b>${moeda(k.valor)}</b></div></div>
+    <p class="nota"><span>${efeito}</span></p>`;
+}
 
 function reabrirDetalhe(parcelaId) {
   const p = S.dados.parcelas.find(x => x.id === parcelaId);
@@ -955,22 +1152,43 @@ const FORMS = {
     const ps = S.form.parcelas;
     if (!ps.length) return toast('Nenhuma parcela gerada. Confira valor e vencimento.', 'erro');
     if (ps.some(p => !p.vencimento || !(p.valor >= 0))) return toast('Confira as datas e os valores das parcelas.', 'erro');
-    const aporte = { ...c, id: S.form.id || '', n_parcelas: c.modalidade === 'unico' ? 1 : ps.length };
+    const aporte = { ...c, id: S.form.id || '', n_parcelas: c.modalidade === 'unico' ? 1 : Math.min(600, ps.length) };
+    if (c.modalidade === 'fixa') Object.assign(aporte, { regime: 'simples', taxa_periodo: 'mes', periodicidade: 'diaria' });
     delete aporte.primeiro_venc;
     const parcelas = ps.map((p, i) => ({
       num: i + 1, vencimento: p.vencimento, valor: r2(p.valor), amortizacao: r2(p.amortizacao), juros: r2(p.valor - p.amortizacao),
-      recebido_em: p.recebido_em || null, valor_recebido: p.recebido_em ? p.valor_recebido : null, obs: p.obs || null,
+      recebido_em: p.recebido_em || null, valor_recebido: p.recebido_em ? p.valor_recebido : null, mora: p.recebido_em ? (p.mora || 0) : 0, obs: p.obs || null,
     }));
     const id = await tentar(() => S.store.salvarAporte(aporte, parcelas), 'Crédito gravado');
     await recarregar();
     verAporte(id);
   },
   async receber(fd, form) {
-    const v = C.parseNum(fd.get('valor'));
-    if (!(v >= 0)) return toast('Valor inválido.', 'erro');
-    await tentar(() => S.store.receber(form.dataset.id, fd.get('data'), r2(v), fd.get('obs')), 'Recebimento registrado');
-    const id = form.dataset.id; fechar(); await recarregar();
-    if (S.view !== 'inicio' && S.view !== 'agenda') reabrirDetalhe(id);
+    const k = calcRecebimento(form, false);
+    if (!(k.valor >= 0)) return toast('Valor inválido.', 'erro');
+    if (k.erro) return toast(k.erro, 'erro');
+    const obs = String(fd.get('obs') || '').trim();
+    const aporteId = k.a.id;
+    if (!k.res.refeitas) {
+      await tentar(() => S.store.receber(k.p.id, k.data, r2(k.valor), obs, k.mora), 'Recebimento registrado');
+    } else {
+      const a = k.a;
+      const aporte = { id: a.id, cliente_id: a.cliente_id, valor: a.valor, data_aporte: a.data_aporte, taxa: a.taxa, taxa_periodo: a.taxa_periodo, regime: a.regime,
+        modalidade: a.modalidade, periodicidade: a.periodicidade, prazo_dias: a.prazo_dias ?? null, obs: a.obs || '',
+        n_parcelas: a.modalidade === 'fixa' ? a.n_parcelas : Math.max(1, Math.min(600, k.res.parcelas.length)) };
+      const parcelas = k.res.parcelas.map(x => ({ num: x.num, vencimento: x.vencimento, valor: r2(x.valor), juros: r2(x.juros), amortizacao: r2(x.amortizacao),
+        recebido_em: x.recebido_em || null, valor_recebido: x.recebido_em ? r2(x.valor_recebido) : null, mora: x.recebido_em ? r2(x.mora || 0) : 0,
+        obs: x.id === k.p.id ? (obs || null) : (x.obs || null) }));
+      await tentar(() => S.store.salvarAporte(aporte, parcelas), 'Recebimento registrado e parcelas recalculadas');
+    }
+    fechar(); await recarregar();
+    if (S.view !== 'inicio' && S.view !== 'agenda') verAporte(aporteId);
+  },
+  async acordo(fd) {
+    const d = Object.fromEntries([...fd].map(([k, v]) => [k, String(v)]));
+    if (d.termos_acordo.trim() === TERMOS_PADRAO.trim()) d.termos_acordo = '';
+    await tentar(() => S.store.salvarDadosAcordo(d), 'Dados do acordo gravados');
+    S.perfil.conta = { ...S.perfil.conta, ...Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v.trim() || null])) };
   },
   async membro(fd) {
     await tentar(() => S.store.incluirMembro(S.perfil.membro.conta_id, fd.get('email'), fd.get('nome').trim()), 'Pessoa incluída');
@@ -1006,7 +1224,14 @@ document.addEventListener('submit', e => {
   Promise.resolve(FORMS[form.dataset.f](new FormData(form), form)).catch(() => {}).finally(() => { if (btn?.isConnected) btn.disabled = false; });
 });
 
-document.addEventListener('change', e => {
+document.addEventListener('change', async e => {
+  if (e.target.dataset.in === 'doc-arquivo') {
+    const inp = e.target; const cli = inp.dataset.cliente; const arqs = [...inp.files]; inp.value = '';
+    const contaId = S.perfil.conta?.id || S.perfil.membro?.conta_id;
+    for (const f of arqs) await tentar(() => S.store.enviarDocumento(contaId, cli, f), `${f.name} enviado`).catch(() => {});
+    return carregarDocs(cli);
+  }
+  if (e.target.closest('form[data-f="receber"]')) return previaRecebimento(e.target);
   const form = e.target.closest('form[data-f="agenda"], form[data-f="aportes"]');
   if (form) return FORMS[form.dataset.f](new FormData(form), form);
   if (e.target.closest('#f-aporte') && !e.target.dataset.in) campoAporteMudou(e.target);
@@ -1029,7 +1254,8 @@ document.addEventListener('input', e => {
     if (cab) { cab.children[0].querySelector('b').textContent = moeda(tot); cab.children[1].querySelector('b').textContent = moeda(c.valor > 0 ? r2(tot - c.valor) : 0); }
     return;
   }
-  if (t.closest('#f-aporte') && ['valor', 'taxa', 'n_parcelas'].includes(t.name)) campoAporteMudou(t);
+  if (t.closest('#f-aporte') && ['valor', 'taxa', 'n_parcelas', 'prazo_dias'].includes(t.name)) campoAporteMudou(t);
+  if (t.closest('form[data-f="receber"]')) previaRecebimento(t);
 });
 
 function campoAporteMudou(t) {

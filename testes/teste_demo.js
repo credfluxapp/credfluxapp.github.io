@@ -94,24 +94,59 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await foto('m04_agenda_meses');
 
     // Receber a primeira parcela da agenda
-    const antes = await avaliar(`JSON.parse(localStorage.aportes_demo_v1).parcelas.filter(p=>p.recebido_em).length`);
+    const antes = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.filter(p=>p.recebido_em).length`);
     await clicar('[data-a="receber"]'); await espera(200);
     await foto('m05_receber', false);
     await avaliar(`document.querySelector('form[data-f="receber"]').requestSubmit()`); await espera(500);
-    const depois = await avaliar(`JSON.parse(localStorage.aportes_demo_v1).parcelas.filter(p=>p.recebido_em).length`);
+    const depois = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.filter(p=>p.recebido_em).length`);
     ok(depois === antes + 1, `Recebimento registrado (${antes} -> ${depois})`);
+
+    // Parcela em atraso: multa e "só os juros" (recalcula as seguintes)
+    await clicar('[data-a="nav"][data-v="inicio"]'); await espera(300);
+    await clicar('.item.st-atrasada [data-a="receber"]'); await espera(300);
+    const mora = await avaliar(`(()=>{const l=document.getElementById('rec-mora-l'); return l && !l.hidden ? document.getElementById('rec-mora-t').textContent : ''})()`);
+    ok(/multa/i.test(mora), `Multa de atraso oferecida (${mora})`);
+    await clicar('[data-a="rec-modo"][data-m="juros"]'); await espera(200);
+    const prevJ = await avaliar(`document.getElementById('rec-previa').textContent`);
+    ok(/saldo devedor passa/.test(prevJ) || /não mudam/.test(prevJ), 'Prévia do recebimento só dos juros');
+    await foto('m05b_receber_juros_multa', false);
+    const antes2 = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.filter(p=>p.recebido_em).length`);
+    await avaliar(`document.querySelector('form[data-f="receber"]').requestSubmit()`); await espera(600);
+    const db2 = await avaliar(`(()=>{const d=JSON.parse(localStorage.credflux_demo_v2); return {n:d.parcelas.filter(p=>p.recebido_em).length, mora:d.parcelas.filter(p=>p.mora>0).length}})()`);
+    ok(db2.n === antes2 + 1 && db2.mora >= 1, `Recebimento só dos juros com multa gravado (${antes2} -> ${db2.n}, ${db2.mora} com multa)`);
+
+    // Pagamento parcial numa parcela Price: as seguintes são refeitas sobre o saldo
+    await avaliar(`[...document.querySelectorAll('.item')].find(i=>/Mercadinho/.test(i.textContent) && i.querySelector('[data-a="receber"]')).querySelector('[data-a="receber"]').click()`);
+    await espera(300);
+    const pid = await avaliar(`document.querySelector('form[data-f="receber"]').dataset.id`);
+    const ap = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.find(p=>p.id==='${pid}').aporte_id`);
+    const antesP = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.filter(p=>p.aporte_id==='${ap}' && !p.recebido_em).map(p=>p.valor)`);
+    await clicar('[data-a="rec-modo"][data-m="outro"]');
+    await avaliar(`(()=>{const v=document.querySelector('form[data-f="receber"] [name=valor]'); v.value='500,00'; v.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await espera(200);
+    ok(/saldo devedor passa/.test(await avaliar(`document.getElementById('rec-previa').textContent`)), 'Prévia avisa que o saldo muda no pagamento parcial');
+    await foto('m05c_receber_parcial', false);
+    await avaliar(`document.querySelector('form[data-f="receber"]').requestSubmit()`); await espera(700);
+    const depoisP = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.filter(p=>p.aporte_id==='${ap}' && !p.recebido_em).map(p=>p.valor)`);
+    ok(depoisP.length === antesP.length - 1 && depoisP[0] > antesP[1], `Parcelas seguintes refeitas (${antesP[1]} -> ${depoisP[0]})`);
+    ok(await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.some(p=>p.aporte_id==='${ap}' && p.valor_recebido===500)`), 'Recebimento parcial gravado');
 
     await clicar('[data-a="nav"][data-v="clientes"]'); await espera(300);
     ok(await transborda() <= 0, 'Clientes sem rolagem lateral');
     await foto('m06_clientes');
-    await clicar('[data-a="cli-ver"]'); await espera(300);
+    await clicar('[data-a="cli-ver"]'); await espera(500);
+    await avaliar(`(()=>{const i=document.querySelector('[data-in="doc-arquivo"]'); const dt=new DataTransfer();
+      dt.items.add(new File(['%PDF-1.4 teste'], 'contrato assinado.pdf', {type:'application/pdf'})); i.files=dt.files;
+      i.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await espera(800);
+    ok(await avaliar(`document.querySelectorAll('#docs-cli .item').length`) === 1, 'Documento enviado aparece no cliente');
     await foto('m07_cliente', false);
     await clicar('#dlg [data-a="fechar"]');
 
     // Novo aporte
     await clicar('[data-a="nav"][data-v="aportes"]'); await espera(300);
     await foto('m08_aportes');
-    const nAp = await avaliar(`JSON.parse(localStorage.aportes_demo_v1).aportes.length`);
+    const nAp = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).aportes.length`);
     await clicar('.tit-linha [data-a="ap-novo"]'); await espera(300);
     await avaliar(`(()=>{const f=document.getElementById('f-aporte');
       const set=(n,v,ev='input')=>{const e=f.elements[n]; e.value=v; e.dispatchEvent(new Event(ev,{bubbles:true}));};
@@ -123,11 +158,35 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     ok(/22\.15[0-9],/.test(prev[1].replace(/\s/g, '')), `Total Price 20.000 a 3% em 6x ~ R$ 22.152 (${prev[1]})`);
     await foto('m09_novo_aporte', false);
     await avaliar(`document.getElementById('f-aporte').requestSubmit()`); await espera(500);
-    ok(await avaliar(`JSON.parse(localStorage.aportes_demo_v1).aportes.length`) === nAp + 1, 'Aporte gravado');
+    ok(await avaliar(`JSON.parse(localStorage.credflux_demo_v2).aportes.length`) === nAp + 1, 'Aporte gravado');
     await foto('m10_aporte_detalhe', false);
+
+    // Acordo em PDF guardado nos documentos do cliente
+    const nDocs = await avaliar(`(JSON.parse(localStorage.credflux_demo_v2).documentos||[]).length`);
+    await clicar('#dlg [data-a="acordo"]'); await espera(300);
+    await clicar('#dlg [data-a="acordo-gerar"][data-guardar="1"]'); await espera(5000);
+    const docs = await avaliar(`(JSON.parse(localStorage.credflux_demo_v2).documentos||[]).map(d=>[d.nome,d.tamanho])`);
+    ok(docs.length === nDocs + 1 && docs.at(-1)[1] > 3000, `Acordo em PDF gerado e guardado (${JSON.stringify(docs.at(-1))})`);
+    const pdf = await avaliar(`(JSON.parse(localStorage.credflux_demo_v2).documentos||[]).at(-1)?.dados || ''`);
+    if (pdf) fs.writeFileSync(path.join(SAIDA, 'acordo.pdf'), Buffer.from(pdf.split(',')[1], 'base64'));
+    await clicar('#dlg [data-a="fechar"]');
+
+    // Crédito com taxa fixa em dias: 1.000 + 10% em 30 dias, 11 parcelas de 100
+    await clicar('.tit-linha [data-a="ap-novo"]'); await espera(300);
+    await avaliar(`(()=>{const f=document.getElementById('f-aporte');
+      const set=(n,v,ev='input')=>{const e=f.elements[n]; e.value=v; e.dispatchEvent(new Event(ev,{bubbles:true}));};
+      set('cliente_id', f.elements.cliente_id.options[1].value, 'change'); set('modalidade','fixa','change');
+      set('valor','1.000,00'); set('taxa','10'); set('prazo_dias','30'); set('n_parcelas','11');})()`);
+    await espera(300);
+    const fx = await avaliar(`[document.querySelectorAll('.parc-lin').length, document.querySelector('.previa-cab b').textContent, [...document.querySelectorAll('.parc-lin input[data-k=valor]')].map(i=>i.value).join('|'), document.querySelector('[name=primeiro_venc]').closest('label').hidden]`);
+    ok(fx[0] === 11 && /1\.100,00/.test(fx[1]) && fx[2].split('|').every(v => v === '100,00') && fx[3], `Taxa fixa: 11 parcelas de 100, total 1.100 (${fx[0]}, ${fx[1]})`);
+    await foto('m09b_credito_fixa', false);
+    await avaliar(`document.getElementById('f-aporte').requestSubmit()`); await espera(500);
+    ok(await avaliar(`JSON.parse(localStorage.credflux_demo_v2).aportes.some(a=>a.modalidade==='fixa' && a.prazo_dias===30 && a.valor===1000)`), 'Crédito de taxa fixa gravado com o prazo');
     await clicar('#dlg [data-a="fechar"]');
 
     await clicar('[data-a="nav"][data-v="mais"]'); await espera(300);
+    ok(await avaliar(`!!document.querySelector('form[data-f="acordo"] textarea[name=termos_acordo]')`), 'Mais mostra os dados do acordo');
     await foto('m11_mais');
     await clicar('[data-a="nav"][data-v="assinatura"]'); await espera(1500);
     ok(await avaliar(`/^000201/.test(document.getElementById('pix-codigo').value)`), 'Código Pix gerado');

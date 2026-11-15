@@ -243,8 +243,8 @@ button.item { cursor: pointer; }
 
 /* Dados, prévia e parcelas */
 .dados { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 12px 0; }
-.dados > div { display: flex; flex-direction: column; font-size: 13px; }
-.dados span { font-size: 12px; font-weight: 500; color: var(--suave); }
+.dados > div { font-size: 13px; min-width: 0; }
+.dados > div > span:first-child { display: block; font-size: 12px; font-weight: 500; color: var(--suave); }
 .previa-cab { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--borda); border: 1px solid var(--borda); border-radius: var(--raio-p); overflow: hidden; margin: var(--e1) 0; }
 .previa-cab div { display: flex; flex-direction: column; min-width: 0; background: var(--hover); padding: 8px 10px; }
 .previa-cab span { font-size: 11px; font-weight: 500; color: var(--suave); }
@@ -273,6 +273,35 @@ dialog::backdrop { background: rgba(0, 0, 0, .32); }
 #toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-h) + var(--e2) + env(safe-area-inset-bottom)); z-index: 100; display: flex; flex-direction: column; gap: 6px; width: min(420px, calc(100vw - 32px)); }
 .toast { background: var(--pri); color: #fff; padding: 10px 14px; border-radius: var(--raio); font-size: 13px; box-shadow: var(--sombra); }
 .toast.ok { background: var(--ok); } .toast.erro { background: var(--ruim); }
+
+/* Recebimento, documentos e acordo ------------------------------------------- */
+.btn svg, .banner svg, .nota svg { width: 16px; height: 16px; flex-shrink: 0; }
+.banner > span { flex: 1; min-width: 0; }
+.nota { display: flex; gap: 8px; align-items: flex-start; background: var(--hover); border: 1px solid var(--borda); border-radius: var(--raio-p); padding: 10px 12px; font-size: 13px; color: #444; margin: 8px 0 12px; }
+.nota svg { margin-top: 2px; color: var(--suave); }
+.erro-campo { color: var(--ruim); font-size: 13px; margin: 0 0 12px; }
+.marcar { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--texto); font-weight: 400; cursor: pointer; }
+.marcar input { width: 16px; height: 16px; min-height: 0; margin: 0; accent-color: var(--pri); flex-shrink: 0; }
+.conta-linhas { border: 1px solid var(--borda); border-radius: var(--raio-p); overflow: hidden; margin-bottom: 8px; }
+.conta-linhas > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 12px; font-size: 13px; border-bottom: 1px solid var(--borda); }
+.conta-linhas > div:last-child { border-bottom: 0; }
+.conta-linhas span { color: var(--suave); }
+.conta-linhas b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.conta-linhas .total { background: var(--hover); }
+.conta-linhas .total span { color: var(--texto); font-weight: 500; }
+.conta-linhas .total b { font-weight: 600; }
+.sec-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: var(--e3) 0 var(--e1); }
+.sec-cab h3 { margin: 0; }
+.arquivo { position: relative; overflow: hidden; }
+.arquivo input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
+.arquivo:focus-within { outline: 2px solid var(--foco); outline-offset: 2px; }
+.item-pr.doc { flex-direction: row; align-items: center; gap: 10px; cursor: default; }
+.item-pr.doc > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.doc-ic { flex-shrink: 0; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--borda); border-radius: var(--raio-p); color: var(--suave); }
+.doc-ic svg { width: 16px; height: 16px; }
+.vazio-p.erro { color: var(--ruim); padding: var(--e2); display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
+.dados > div a { overflow-wrap: anywhere; }
+input:disabled, textarea:disabled { background: var(--hover); color: var(--suave); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
@@ -318,6 +347,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .32); }
   .filtros { grid-template-columns: repeat(4, 1fr); }
   .dados { grid-template-columns: 1fr 1fr; }
   .item { grid-template-columns: 1fr auto auto; grid-template-areas: "pr val ac"; min-height: 52px; }
+  .item-pr.doc ~ .item-ac { grid-column: 2 / -1; }
   .item-val { flex-direction: row-reverse; align-items: center; gap: 12px; justify-content: flex-start; }
   .conteudo > .lista .item-val, .grupo .item-val { min-width: 13rem; }
   .form.linha { grid-template-columns: 2fr 1.5fr auto; }

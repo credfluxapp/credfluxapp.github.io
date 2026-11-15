@@ -1,4 +1,4 @@
-# Aportes
+# CredFlux
 
 Sistema para investidores cadastrarem clientes e aportes (valor, taxa, vencimentos) e verem quanto vão receber por dia e por mês. Funciona no celular (pode ser instalado na tela inicial) e no computador.
 
@@ -12,7 +12,7 @@ Vendido por assinatura mensal paga por Pix: cada investidor cria a própria cont
 
 ### 1. Supabase (banco e login)
 1. Em https://supabase.com, crie um projeto novo (separado do SAGA). Região: São Paulo.
-2. **SQL Editor**: abra `supabase/schema.sql`, troque `SEU_EMAIL@EXEMPLO.COM` pelo seu e-mail e rode o arquivo inteiro.
+2. **SQL Editor**: abra `supabase/schema.sql`, troque `SEU_EMAIL@EXEMPLO.COM` pelo seu e-mail e rode o arquivo inteiro. Depois rode `supabase/atualizacao_01.sql` (taxa fixa em dias, multa, dados do acordo e documentos dos clientes; pode rodar de novo sem problema).
 3. **Authentication › Sign In / Providers › Email**: deixe "Enable sign ups" ligado e **"Confirm email" ligado**.
    O "Confirm email" é obrigatório: é ele que impede alguém de criar acesso com o e-mail de outra pessoa.
 4. **Project Settings › API**: copie a *Project URL* e a chave *anon / publishable* para o `config.js`.
@@ -50,7 +50,7 @@ Sem isso, os links de confirmação e de nova senha mandam a pessoa para o lugar
 - Assinatura vencida: a conta fica **só para leitura** (vê tudo, não grava), até o pagamento ser confirmado.
 - O administrador vê contas e pagamentos, nunca os clientes e aportes dos investidores.
 
-## Formas de recebimento de um aporte
+## Formas de recebimento de um crédito
 | Opção | Exemplo |
 |---|---|
 | Pagamento único | R$ 10.000 a 2% a.m., capital e juros em 6 meses |
@@ -58,12 +58,28 @@ Sem isso, os links de confirmação e de nova senha mandam a pessoa para o lugar
 | Parcelas iguais (Price) | 12 parcelas de R$ 945,60 |
 | Amortização constante (SAC) | parcelas decrescentes |
 | Parcelas definidas por mim | datas e valores livres |
+| Taxa fixa em dias | R$ 1.000 + 10% = R$ 1.100 em 30 dias, em 11 parcelas de R$ 100 ou 20 de R$ 55 |
 
-A frequência pode ser diária, semanal, quinzenal, mensal, bimestral, trimestral, semestral ou anual. A taxa pode ser ao mês ou ao ano, com juros simples ou compostos. Antes de gravar, dá para ajustar a data e o valor de cada parcela.
+A frequência pode ser diária, semanal, quinzenal, mensal, bimestral, trimestral, semestral ou anual. A taxa pode ser ao mês ou ao ano, com juros simples ou compostos. Antes de gravar, dá para ajustar a data e o valor de cada parcela. Vencimento no domingo passa para a segunda.
+
+## Recebimentos
+- Opções rápidas: parcela inteira, só os juros ou outro valor.
+- O dinheiro recebido paga primeiro a multa, depois os juros e por último o capital.
+- Nas modalidades mensais, quando o valor recebido é diferente da parcela, as parcelas seguintes são refeitas sobre o novo saldo devedor. Juros que faltaram somam ao saldo.
+- Em taxa fixa e em parcelas livres, a diferença passa para a próxima parcela.
+- Multa de atraso por crédito, contada desde a parcela mais antiga em aberto:
+  - taxa fixa: juros do contrato ÷ 30 por dia;
+  - demais modalidades: saldo × taxa mensal ÷ 30 por dia.
+  - Dá para dispensar a multa ao receber.
+
+## Documentos e acordo
+- Cada cliente guarda contratos, recibos e fotos (PDF ou imagem, até 10 MB) numa pasta privada do Supabase Storage.
+- Cada crédito gera um acordo em PDF com as condições, as parcelas e os termos definidos em Mais › Dados do acordo. Os termos são um modelo de referência e devem ser revisados por um advogado.
 
 ## Testes
 - Interface (demonstração, celular e computador): `python -m http.server 8765` nesta pasta e, em outro terminal, `node testes/teste_demo.js <pasta_das_fotos>`.
-- Regras do banco (isolamento entre contas, convites, pagamento, modo leitura): `npm i @electric-sql/pglite` e `node testes/teste_banco.mjs supabase/schema.sql` (31 verificações).
+- Regras do banco (isolamento entre contas, convites, pagamento, modo leitura, documentos): `npm i @electric-sql/pglite` e `node testes/teste_banco.mjs supabase/schema.sql supabase/atualizacao_01.sql` (46 verificações).
+- Cálculos (domingo, taxa fixa, multa, pagamento parcial): `node testes/teste_calc.mjs` (23 verificações).
 
 ## Custos e limites
 - GitHub Pages: grátis.
