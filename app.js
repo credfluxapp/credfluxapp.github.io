@@ -42,14 +42,19 @@ async function tentar(fn, okMsg) {
   catch (e) { console.error(e); toast(e.message || 'Erro', 'erro'); throw e; }
 }
 
+// Ícones Lucide (lucide.dev, licença ISC), traço fino.
 const ICON = {
-  inicio: '<path d="M3 10.5 12 3l9 7.5V21H14v-6h-4v6H3z"/>',
-  agenda: '<path d="M7 2v3M17 2v3M3 8h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>',
-  clientes: '<path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 19v-1a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
-  aportes: '<path d="M3 7h18v12H3zM3 7l3-4h12l3 4M15 13h2"/>',
-  mais: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  inicio: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  agenda: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
+  clientes: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  aportes: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
+  mais: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  grafico: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
 };
-const icone = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
+const icone = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
+// Marca do CredFlux: um "C" que termina em seta (o crédito que volta).
+const MARCA_ICONE = '<svg class="marca-ic" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="currentColor"/><g fill="none" stroke="var(--marca-traco, #fff)" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"><path d="M352 160A136 136 0 1 0 256 392H400"/><path d="M356 348l44 44-44 44"/></g></svg>';
+const MARCA = `<span class="logo">${MARCA_ICONE}<b>CredFlux</b></span>`;
 
 // Estado ------------------------------------------------------------------------
 const S = {
@@ -125,39 +130,52 @@ const ST_ROT = { recebida: 'Recebida', atrasada: 'Em atraso', hoje: 'Vence hoje'
 // Telas de acesso ----------------------------------------------------------------
 function telaAcesso(modo = 'entrar', aviso = '') {
   const pub = S.publica || {};
-  const preco = pub.preco_mensal ? `${moeda(Number(pub.preco_mensal))} por mês, pago por Pix` : '';
-  const teste = pub.dias_teste ? `${pub.dias_teste} dias de teste sem custo. ` : '';
+  const preco = pub.preco_mensal ? moeda(Number(pub.preco_mensal)) : '';
   const abas = [['entrar', 'Entrar'], ['criar', 'Criar acesso'], ['esqueci', 'Esqueci a senha']]
     .map(([m, t]) => `<button type="button" class="aba ${m === modo ? 'on' : ''}" data-a="acesso" data-m="${m}">${t}</button>`).join('');
   const botao = { entrar: 'Entrar', criar: 'Criar acesso', esqueci: 'Enviar link para nova senha' }[modo];
+  const recursos = [
+    ['agenda', 'Agenda de vencimentos', 'O que vence hoje, nos próximos dias e o que está em atraso, com filtro por período e cliente.'],
+    ['aportes', 'Crédito com a sua regra', 'Pagamento único, só juros, parcelas iguais (Price), SAC ou parcelas definidas por você. Juros simples ou compostos.'],
+    ['grafico', 'Previsão de recebimentos', 'Quanto entra em cada dia dos próximos 30 dias e em cada um dos próximos 12 meses.'],
+    ['clientes', 'Acesso para a equipe', 'Mais de uma pessoa na mesma conta, no celular ou no computador.'],
+  ].map(([i, t, d]) => `<li><span class="ini-ic">${icone(i)}</span><div><b>${t}</b><span>${d}</span></div></li>`).join('');
   document.body.className = 'fora';
   $('#app').innerHTML = `
-  <main class="acesso">
-    <div class="acesso-cab">
-      <div class="logo">${icone('aportes')}</div>
-      <h1>Aportes</h1>
-      <p>Cadastro de clientes, aportes, vencimentos e taxas, com a previsão do que você vai receber por dia e por mês.</p>
+  <header class="ini-topo">
+    ${MARCA}
+    <a href="?demo" class="btn sec peq">Ver demonstração</a>
+  </header>
+  <main class="acesso inicial">
+    <section class="ini-texto">
+      <p class="ini-rot">Gestão de crédito para quem empresta dinheiro</p>
+      <h1>Clientes, créditos e parcelas em um só lugar</h1>
+      <p class="ini-desc">Cadastre cada crédito com o valor, a taxa e a forma de pagamento. O CredFlux gera as parcelas, mostra o que vence e o que está em atraso e calcula quanto você vai receber por dia e por mês.</p>
+      <ul class="ini-lista">${recursos}</ul>
+    </section>
+    <div class="ini-lado">
+      <div class="cartao">
+        <h2>Acesse sua conta</h2>
+        <div class="abas">${abas}</div>
+        ${aviso ? `<p class="aviso">${esc(aviso)}</p>` : ''}
+        <form data-f="acesso" data-m="${modo}">
+          <label>E-mail<input name="email" type="email" autocomplete="email" required autofocus></label>
+          ${modo !== 'esqueci' ? `<label>Senha<input name="senha" type="password" minlength="6" autocomplete="${modo === 'criar' ? 'new-password' : 'current-password'}" required></label>` : ''}
+          ${modo === 'criar' ? '<p class="dica">Use o e-mail que vai acessar o sistema. Se alguém incluiu você numa conta, use o mesmo e-mail que essa pessoa cadastrou.</p>' : ''}
+          <button class="btn pri largo">${botao}</button>
+        </form>
+      </div>
+      ${preco ? `<div class="preco"><div><b>${preco}</b><span>por mês, pago por Pix</span></div>${pub.dias_teste ? `<span class="chip">${pub.dias_teste} dias de teste sem custo</span>` : ''}</div>` : ''}
+      <p class="centro dica">Quer ver antes? <a href="?demo" class="link">Abrir a demonstração com dados de exemplo</a></p>
     </div>
-    <div class="cartao">
-      <div class="abas">${abas}</div>
-      ${aviso ? `<p class="aviso">${esc(aviso)}</p>` : ''}
-      <form data-f="acesso" data-m="${modo}">
-        <label>E-mail<input name="email" type="email" autocomplete="email" required autofocus></label>
-        ${modo !== 'esqueci' ? `<label>Senha<input name="senha" type="password" minlength="6" autocomplete="${modo === 'criar' ? 'new-password' : 'current-password'}" required></label>` : ''}
-        ${modo === 'criar' ? '<p class="dica">Use o e-mail que vai acessar o sistema. Se alguém incluiu você numa conta, use o mesmo e-mail que ele cadastrou.</p>' : ''}
-        <button class="btn pri largo">${botao}</button>
-      </form>
-    </div>
-    ${preco ? `<p class="preco">${teste}Depois, ${preco}.</p>` : ''}
-    <p class="centro"><a href="?demo" class="link">Ver demonstração com dados de exemplo</a></p>
-    ${pub.contato ? `<p class="centro dica">Contato: ${esc(pub.contato)}</p>` : ''}
-  </main>`;
+  </main>
+  <footer class="ini-pe"><span>CredFlux</span>${pub.contato ? `<span>Contato: ${esc(pub.contato)}</span>` : ''}</footer>`;
 }
 
 function telaNovaSenha() {
   document.body.className = 'fora';
   $('#app').innerHTML = `
-  <main class="acesso"><div class="cartao">
+  <main class="acesso"><div class="acesso-cab">${MARCA}</div><div class="cartao">
     <h2>Nova senha</h2>
     <form data-f="nova-senha">
       <label>Nova senha<input name="senha" type="password" minlength="6" autocomplete="new-password" required autofocus></label>
@@ -170,12 +188,12 @@ function telaCriarConta() {
   const pub = S.perfil.config || {};
   document.body.className = 'fora';
   $('#app').innerHTML = `
-  <main class="acesso"><div class="cartao">
+  <main class="acesso"><div class="acesso-cab">${MARCA}</div><div class="cartao">
     <h2>Criar sua conta</h2>
-    <p>Você entrou como <b>${esc(S.perfil.email)}</b>. Crie a conta onde ficam seus clientes e aportes.
+    <p>Você entrou como <b>${esc(S.perfil.email)}</b>. Crie a conta onde ficam seus clientes e créditos.
     ${pub.dias_teste ? `Os primeiros ${pub.dias_teste} dias são de teste, sem custo.` : ''}</p>
     <form data-f="criar-conta">
-      <label>Nome da conta<input name="nome" required autofocus placeholder="Ex.: Aportes João Silva"></label>
+      <label>Nome da conta<input name="nome" required autofocus placeholder="Ex.: Créditos João Silva"></label>
       <label>Seu nome<input name="seu" autocomplete="name"></label>
       <button class="btn pri largo">Criar conta</button>
     </form>
@@ -188,7 +206,7 @@ function telaCriarConta() {
 function telaSemConfig() {
   document.body.className = 'fora';
   $('#app').innerHTML = `
-  <main class="acesso"><div class="cartao">
+  <main class="acesso"><div class="acesso-cab">${MARCA}</div><div class="cartao">
     <h2>Sistema ainda não configurado</h2>
     <p>Preencha <code>config.js</code> com o endereço e a chave pública do Supabase (veja LEIAME.md).</p>
     <a class="btn pri largo" href="?demo">Ver demonstração</a>
@@ -196,7 +214,7 @@ function telaSemConfig() {
 }
 
 // Estrutura principal ------------------------------------------------------------
-const NAV = [['inicio', 'Início'], ['agenda', 'Agenda'], ['clientes', 'Clientes'], ['aportes', 'Aportes'], ['mais', 'Mais']];
+const NAV = [['inicio', 'Início'], ['agenda', 'Agenda'], ['clientes', 'Clientes'], ['aportes', 'Créditos'], ['mais', 'Mais']];
 
 function render() {
   if (!S.perfil?.membro) { if (S.view === 'admin' && S.perfil?.admin) return renderAdminSolto(); return telaCriarConta(); }
@@ -205,8 +223,8 @@ function render() {
   const nav = NAV.map(([v, t]) => `<button class="nav-it ${S.view === v || (v === 'mais' && ['assinatura', 'admin'].includes(S.view)) ? 'on' : ''}" data-a="nav" data-v="${v}">${icone(v)}<span>${t}</span></button>`).join('');
   $('#app').innerHTML = `
   <header class="topo">
-    <div class="topo-nome"><b>${esc(conta?.nome || 'Aportes')}</b>${chipAssinatura()}</div>
-    ${['inicio', 'agenda'].includes(S.view) && !leitura() ? `<button class="btn pri peq" data-a="ap-novo">+ Aporte</button>` : ''}
+    <div class="topo-nome">${MARCA_ICONE}<b>${esc(conta?.nome || 'CredFlux')}</b>${chipAssinatura()}</div>
+    ${['inicio', 'agenda'].includes(S.view) && !leitura() ? `<button class="btn pri peq" data-a="ap-novo">+ Crédito</button>` : ''}
   </header>
   <nav class="nav">${nav}</nav>
   <main class="conteudo">${avisos()}${VIEWS[S.view]()}</main>`;
@@ -251,7 +269,7 @@ function viewInicio() {
     </button>`).join('');
   const sem = !S.dados.aportes.length;
   return `
-  ${sem ? `<div class="vazio"><h2>Comece cadastrando um cliente e um aporte</h2><p>Depois de cadastrar, aqui aparece quanto você vai receber em cada dia e em cada mês.</p>
+  ${sem ? `<div class="vazio"><h2>Comece cadastrando um cliente e um crédito</h2><p>Depois de cadastrar, aqui aparece quanto você vai receber em cada dia e em cada mês.</p>
     ${leitura() ? '' : '<button class="btn pri" data-a="cli-novo">Cadastrar cliente</button>'}</div>` : ''}
   <section class="kpis">${cards}</section>
   <section class="kpis dois">
@@ -402,7 +420,7 @@ function viewClientes() {
     const r = resumoCliente(c);
     return `<button class="item" data-a="cli-ver" data-id="${c.id}">
       <span class="item-pr"><span class="item-tit">${esc(c.nome)}</span>
-        <span class="item-sub">${r.ativos} aporte${r.ativos === 1 ? '' : 's'} ativo${r.ativos === 1 ? '' : 's'}${c.telefone ? ' · ' + esc(c.telefone) : ''}</span></span>
+        <span class="item-sub">${r.ativos} crédito${r.ativos === 1 ? '' : 's'} ativo${r.ativos === 1 ? '' : 's'}${c.telefone ? ' · ' + esc(c.telefone) : ''}</span></span>
       <span class="item-val"><b>${moeda(r.aReceber)}</b>${r.atraso ? `<span class="tag atrasada">${moeda(r.atraso)} em atraso</span>` : '<span class="tag cinza">a receber</span>'}</span>
     </button>`;
   }).join('') || '<p class="vazio-p">Nenhum cliente.</p>'}</div>`;
@@ -427,17 +445,17 @@ function verCliente(id) {
     ${c.obs ? `<div><span>Observações</span>${esc(c.obs)}</div>` : ''}
   </div>
   <div class="mini-kpis">
-    <div><span>Total aportado</span><b>${moeda(r.investido)}</b></div>
+    <div><span>Total em crédito</span><b>${moeda(r.investido)}</b></div>
     <div><span>A receber</span><b>${moeda(r.aReceber)}</b></div>
     <div><span>Capital em aberto</span><b>${moeda(r.capital)}</b></div>
     <div class="${r.atraso ? 'ruim' : ''}"><span>Em atraso</span><b>${moeda(r.atraso)}</b></div>
   </div>
   ${leitura() ? '' : `<div class="acoes">
-    <button class="btn pri" data-a="ap-novo" data-cliente="${c.id}">+ Aporte</button>
+    <button class="btn pri" data-a="ap-novo" data-cliente="${c.id}">+ Crédito</button>
     <button class="btn sec" data-a="cli-editar" data-id="${c.id}">Editar</button>
     <button class="btn perigo" data-a="cli-excluir" data-id="${c.id}">Excluir</button></div>`}
-  <h3>Aportes</h3>
-  ${listaAportes(r.aps) || '<p class="dica">Nenhum aporte.</p>'}`);
+  <h3>Créditos</h3>
+  ${listaAportes(r.aps) || '<p class="dica">Nenhum crédito.</p>'}`);
 }
 
 function formCliente(id) {
@@ -483,18 +501,18 @@ function viewAportes() {
   const opt = (v, t, sel) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${esc(t)}</option>`;
   const rs = aps.map(resumoAporte);
   return `
-  <div class="tit-linha"><h1 class="tit">Aportes</h1>${leitura() ? '' : '<button class="btn pri" data-a="ap-novo">+ Aporte</button>'}</div>
+  <div class="tit-linha"><h1 class="tit">Créditos</h1>${leitura() ? '' : '<button class="btn pri" data-a="ap-novo">+ Crédito</button>'}</div>
   <form class="filtros" data-f="aportes">
     <label>Situação<select name="status">${opt('ativos', 'Em andamento', f.status)}${opt('atraso', 'Com atraso', f.status)}${opt('quitados', 'Quitados', f.status)}${opt('todos', 'Todos', f.status)}</select></label>
     <label>Cliente<select name="cliente">${opt('', 'Todos', f.cliente)}${S.dados.clientes.map(c => opt(c.id, c.nome, f.cliente)).join('')}</select></label>
   </form>
   <div class="mini-kpis">
-    <div><span>Aportado</span><b>${moeda(soma(aps, a => a.valor))}</b></div>
+    <div><span>Concedido</span><b>${moeda(soma(aps, a => a.valor))}</b></div>
     <div><span>Já recebido</span><b>${moeda(soma(rs, r => r.recebido))}</b></div>
     <div><span>A receber</span><b>${moeda(soma(rs, r => r.aReceber))}</b></div>
     <div><span>Lucro previsto</span><b>${moeda(soma(rs, r => r.lucro))}</b></div>
   </div>
-  ${listaAportes(aps) || '<p class="vazio-p">Nenhum aporte neste filtro.</p>'}`;
+  ${listaAportes(aps) || '<p class="vazio-p">Nenhum crédito neste filtro.</p>'}`;
 }
 
 function verAporte(id) {
@@ -502,7 +520,7 @@ function verAporte(id) {
   const r = resumoAporte(a); const c = S.cli.get(a.cliente_id);
   const per = C.PERIODICIDADES[a.periodicidade]?.nome || '';
   abrir(`
-  <div class="dlg-cab"><h2>Aporte de ${moeda(a.valor)}</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
+  <div class="dlg-cab"><h2>Crédito de ${moeda(a.valor)}</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
   <p><button class="link" data-a="cli-ver" data-id="${c?.id}">${esc(c?.nome || '?')}</button> · ${dataBR(a.data_aporte)}</p>
   <div class="dados">
     <div><span>Taxa</span>${fmtTaxa(a)}, juros ${a.regime}</div>
@@ -542,12 +560,12 @@ function formAporte(id, clientePre) {
   S.form = { id, parcelas: ps, vencManual: Boolean(a) };
   const opt = (v, t, sel) => `<option value="${v}" ${String(v) === String(sel) ? 'selected' : ''}>${esc(t)}</option>`;
   abrir(`
-  <div class="dlg-cab"><h2>${id ? 'Editar aporte' : 'Novo aporte'}</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
+  <div class="dlg-cab"><h2>${id ? 'Editar crédito' : 'Novo crédito'}</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
   <form data-f="aporte" class="form" id="f-aporte">
     <label>Cliente<select name="cliente_id" required>${opt('', 'Escolha', base.cliente_id)}${S.dados.clientes.map(c => opt(c.id, c.nome, base.cliente_id)).join('')}</select></label>
     <div class="col2">
-      <label>Valor aportado (R$)<input name="valor" inputmode="decimal" required value="${base.valor ? C.num(Number(base.valor)) : ''}" placeholder="10.000,00" autofocus></label>
-      <label>Data do aporte<input name="data_aporte" type="date" required value="${base.data_aporte}"></label>
+      <label>Valor do crédito (R$)<input name="valor" inputmode="decimal" required value="${base.valor ? C.num(Number(base.valor)) : ''}" placeholder="10.000,00" autofocus></label>
+      <label>Data do crédito<input name="data_aporte" type="date" required value="${base.data_aporte}"></label>
     </div>
     <div class="col3">
       <label>Taxa (%)<input name="taxa" inputmode="decimal" value="${base.taxa !== '' ? C.num(Number(base.taxa), 2) : ''}" placeholder="2,00"></label>
@@ -562,7 +580,7 @@ function formAporte(id, clientePre) {
     </div>
     <label>Observações<textarea name="obs" rows="2">${esc(base.obs)}</textarea></label>
     <div id="previa"></div>
-    <div class="acoes fixas"><button class="btn pri">Gravar aporte</button><button type="button" class="btn sec" data-a="fechar">Cancelar</button></div>
+    <div class="acoes fixas"><button class="btn pri">Gravar crédito</button><button type="button" class="btn sec" data-a="fechar">Cancelar</button></div>
   </form>`, true);
   ajustarFormAporte(!id);
 }
@@ -715,7 +733,7 @@ function viewAdmin() {
   const cfg = S.perfil.config || {};
   return `
   <h1 class="tit">Painel do administrador</h1>
-  <p class="dica">Você vê as contas e os pagamentos. Os clientes e aportes de cada investidor não aparecem aqui.</p>
+  <p class="dica">Você vê as contas e os pagamentos. Os clientes e créditos de cada investidor não aparecem aqui.</p>
   <section class="painel" id="adm-resumo"><p class="dica">Carregando…</p></section>
   <section class="painel" id="adm-pag"></section>
   <section class="painel" id="adm-contas"></section>
@@ -775,7 +793,7 @@ async function posAdmin() {
 
 function renderAdminSolto() {
   document.body.className = 'dentro';
-  $('#app').innerHTML = `<header class="topo"><div class="topo-nome"><b>Administração</b></div>
+  $('#app').innerHTML = `<header class="topo"><div class="topo-nome">${MARCA_ICONE}<b>Administração</b></div>
     <button class="btn peq sec" data-a="nav" data-v="inicio">Voltar</button></header>
     <main class="conteudo">${viewAdmin()}</main>`;
   posAdmin().catch(e => toast(e.message, 'erro'));
@@ -799,7 +817,7 @@ function baixar(nome, conteudo, tipo) {
 function csvParcelas(ps, nome) {
   const cel = v => { const s = String(v ?? ''); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const n = v => (v == null || v === '' ? '' : C.num(Number(v)));
-  const linhas = [['Cliente', 'Data do aporte', 'Valor aportado', 'Taxa', 'Parcela', 'Vencimento', 'Valor', 'Juros', 'Amortização', 'Situação', 'Recebido em', 'Valor recebido']];
+  const linhas = [['Cliente', 'Data do crédito', 'Valor do crédito', 'Taxa', 'Parcela', 'Vencimento', 'Valor', 'Juros', 'Amortização', 'Situação', 'Recebido em', 'Valor recebido']];
   for (const p of ps) {
     const a = S.ap.get(p.aporte_id); const c = S.cli.get(a?.cliente_id);
     linhas.push([c?.nome, dataBR(a?.data_aporte), n(a?.valor), a ? fmtTaxa(a) : '', `${p.num}/${(S.parcPorAp.get(p.aporte_id) || []).length}`,
@@ -852,8 +870,8 @@ const ACOES = {
   'ap-ver': d => verAporte(d.id),
   'ap-editar': d => formAporte(d.id),
   'ap-excluir': async d => {
-    if (!confirm('Excluir este aporte e todas as parcelas dele?')) return;
-    await tentar(() => S.store.excluirAporte(d.id), 'Aporte excluído');
+    if (!confirm('Excluir este crédito e todas as parcelas dele?')) return;
+    await tentar(() => S.store.excluirAporte(d.id), 'Crédito excluído');
     fechar(); await recarregar();
   },
   recalcular: () => {
@@ -862,7 +880,7 @@ const ACOES = {
   },
   'csv-agenda': () => csvParcelas(filtrarAgenda(S.f), `agenda_${hoje()}.csv`),
   'csv-tudo': () => csvParcelas(S.dados.parcelas.slice().sort((a, b) => a.vencimento.localeCompare(b.vencimento)), `parcelas_${hoje()}.csv`),
-  'json-tudo': () => baixar(`aportes_${hoje()}.json`, JSON.stringify({ exportado_em: new Date().toISOString(), conta: S.perfil.conta?.nome, ...S.dados }, null, 2), 'application/json'),
+  'json-tudo': () => baixar(`credflux_${hoje()}.json`, JSON.stringify({ exportado_em: new Date().toISOString(), conta: S.perfil.conta?.nome, ...S.dados }, null, 2), 'application/json'),
   'membro-tirar': async d => {
     if (!confirm(`Tirar o acesso de ${d.email}?`)) return;
     await tentar(() => S.store.tirarMembro(d.email), 'Acesso retirado'); carregarPessoas();
@@ -932,7 +950,7 @@ const FORMS = {
   },
   async aporte(fd, form) {
     const c = camposForm(form);
-    if (!(c.valor > 0)) return toast('Informe o valor aportado.', 'erro');
+    if (!(c.valor > 0)) return toast('Informe o valor do crédito.', 'erro');
     if (!c.cliente_id) return toast('Escolha o cliente.', 'erro');
     const ps = S.form.parcelas;
     if (!ps.length) return toast('Nenhuma parcela gerada. Confira valor e vencimento.', 'erro');
@@ -943,7 +961,7 @@ const FORMS = {
       num: i + 1, vencimento: p.vencimento, valor: r2(p.valor), amortizacao: r2(p.amortizacao), juros: r2(p.valor - p.amortizacao),
       recebido_em: p.recebido_em || null, valor_recebido: p.recebido_em ? p.valor_recebido : null, obs: p.obs || null,
     }));
-    const id = await tentar(() => S.store.salvarAporte(aporte, parcelas), 'Aporte gravado');
+    const id = await tentar(() => S.store.salvarAporte(aporte, parcelas), 'Crédito gravado');
     await recarregar();
     verAporte(id);
   },

@@ -116,7 +116,7 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() +
 function semente() {
   const h = hoje();
   const db = { clientes: [], aportes: [], parcelas: [], membros: [], pagamentos: [] };
-  const conta = { id: 'demo', nome: 'Investimentos (demonstração)', assinatura_ate: addDias(h, 12) };
+  const conta = { id: 'demo', nome: 'Carteira de demonstração', assinatura_ate: addDias(h, 12) };
   db.conta = conta;
   db.membros.push({ email: 'voce@exemplo.com', conta_id: 'demo', nome: 'Você', papel: 'dono' });
   const cli = (nome, telefone, documento) => { const c = { id: uid(), nome, telefone, documento, email: '', obs: '' }; db.clientes.push(c); return c; };
@@ -152,7 +152,7 @@ function criarDemo() {
   const gravar = () => localStorage.setItem(CHAVE_DEMO, JSON.stringify(db));
   gravar();
   const usuario = { email: 'voce@exemplo.com' };
-  const config = { preco_mensal: 49.9, dias_teste: 15, chave_pix: 'demonstracao@exemplo.com', nome_recebedor: 'Sistema de Aportes', cidade: 'Imperatriz', contato: '' };
+  const config = { preco_mensal: 49.9, dias_teste: 15, chave_pix: 'demonstracao@exemplo.com', nome_recebedor: 'CredFlux', cidade: 'Imperatriz', contato: '' };
   return {
     modo: 'demo',
     async usuario() { return usuario; },

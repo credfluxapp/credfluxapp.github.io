@@ -1,12 +1,12 @@
 {
-  "name": "Aportes",
-  "short_name": "Aportes",
-  "description": "Cadastro de clientes, aportes, vencimentos e taxas, com a previsão de recebimentos.",
+  "name": "CredFlux",
+  "short_name": "CredFlux",
+  "description": "Cadastro de clientes, créditos, parcelas e taxas, com a previsão de recebimentos.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f4f6f5",
-  "theme_color": "#0f5c4d",
+  "background_color": "#F5F5F5",
+  "theme_color": "#FFFFFF",
   "lang": "pt-BR",
   "icons": [
     { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },

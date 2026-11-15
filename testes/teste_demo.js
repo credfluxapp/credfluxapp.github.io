@@ -73,7 +73,7 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     }
 
     // Celular
-    await tela(390, 844, true);
+    await tela(375, 812, true);
     await cdp('Page.navigate', { url: BASE + '?demo' }); await espera(1500);
     ok(await avaliar(`!!document.querySelector('.kpis')`), 'Início carregou com os indicadores');
     ok(await transborda() <= 0, 'Início sem rolagem lateral no celular');
@@ -140,12 +140,41 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     ok(await transborda() <= 0, 'Início sem rolagem lateral no computador');
     await foto('d01_inicio');
     await clicar('[data-a="nav"][data-v="agenda"]'); await espera(300);
+    ok(await transborda() <= 0, 'Agenda sem rolagem lateral no computador');
     await foto('d02_agenda');
+    await clicar('[data-a="nav"][data-v="clientes"]'); await espera(300);
+    await foto('d03_clientes');
+    await clicar('[data-a="cli-novo"]'); await espera(300);
+    await foto('d04_novo_cliente', false);
+    await clicar('#dlg [data-a="fechar"]');
+    await clicar('[data-a="nav"][data-v="aportes"]'); await espera(300);
+    await foto('d05_creditos');
+    await clicar('.tit-linha [data-a="ap-novo"]'); await espera(300);
+    await foto('d06_novo_credito', false);
+    await clicar('#dlg [data-a="fechar"]');
+    await clicar('button.item[data-a="ap-ver"]'); await espera(300);
+    await foto('d07_credito_detalhe', false);
+    await clicar('#dlg [data-a="fechar"]');
+    await clicar('[data-a="nav"][data-v="mais"]'); await espera(300);
+    await foto('d08_mais');
+    await clicar('[data-a="nav"][data-v="assinatura"]'); await espera(1000);
+    await foto('d09_assinatura');
 
-    // Tela de acesso (sem demo e sem config)
-    await tela(390, 844, true);
-    await cdp('Page.navigate', { url: BASE }); await espera(800);
-    await foto('m00_sem_config', false);
+    // Novo cliente no celular
+    await tela(375, 812, true);
+    await clicar('[data-a="nav"][data-v="clientes"]'); await espera(300);
+    await clicar('[data-a="cli-novo"]'); await espera(300);
+    await foto('m13_novo_cliente', false);
+    await clicar('#dlg [data-a="fechar"]');
+
+    // Tela inicial (acesso), celular e computador
+    await cdp('Page.navigate', { url: BASE }); await espera(2500);
+    ok(await avaliar(`!!document.querySelector('form[data-f="acesso"]')`), 'Tela inicial com o formulário de acesso');
+    ok(await transborda() <= 0, 'Tela inicial sem rolagem lateral no celular');
+    await foto('m00_tela_inicial');
+    await tela(1280, 860, false);
+    await cdp('Page.navigate', { url: BASE }); await espera(2500);
+    await foto('d00_tela_inicial');
   } catch (e) {
     verif.push('FALHA ' + e.message);
   } finally {
