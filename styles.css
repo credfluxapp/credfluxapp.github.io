@@ -236,7 +236,11 @@ a { color: var(--brand-text); }
 b, .dq-v, .jn-v, .graf-v, .item-val, .mini-kpis b, .previa-cab b, .total-agenda b, .grupo-cab b, .valor-pix, .preco b,
 .dados, .conta-linhas b, input[inputmode="decimal"] { font-variant-numeric: tabular-nums; }
 /* só no celular / só nas telas largas */
-@media (max-width: 899.98px) { .so-largo { display: none !important; } }
+@media (max-width: 899.98px) {
+  .so-largo { display: none !important; }
+  /* botões só com ícone no celular (Recibo e Desfazer nas linhas) */
+  .btn.ic-movel { width: var(--check); min-height: var(--check); padding: 0; }
+}
 @media (min-width: 900px) { .so-movel { display: none !important; } }
 
 /* 3. Botões e links -------------------------------------------------------------- */
@@ -630,6 +634,12 @@ body.fora #toasts { bottom: calc(var(--sp-24) + env(safe-area-inset-bottom)); }
 }
 .toast.ok { background-color: var(--brand-text); background-image: var(--grad-ok); }
 .toast.erro { background-color: var(--danger); background-image: var(--grad-perigo); }
+/* mensagem com botão (ex.: Recebimento registrado · Emitir recibo) */
+.toast.com-acao { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12); }
+.toast-acao {
+  flex-shrink: 0; padding: var(--sp-6) var(--sp-12); border: 0; border-radius: var(--r-nav);
+  background-color: var(--brand); background-image: var(--grad-pri); color: var(--on-brand); font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer;
+}
 
 /* 11. Acesso: painel escuro da marca e o formulário -------------------------------- */
 .acesso { max-width: 420px; margin: 0 auto; padding: var(--sp-36) var(--sp-16) calc(var(--sp-36) + env(safe-area-inset-bottom)); }

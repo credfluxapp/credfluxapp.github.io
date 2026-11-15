@@ -1,5 +1,5 @@
 import { abrirStore, configurado, CHAVE_DEMO } from './store.js';
-import { gerarAcordoPDF, TERMOS_PADRAO } from './acordo.js';
+import { gerarAcordoPDF, gerarReciboPDF, prepararPDF, valorPorExtenso, TERMOS_PADRAO } from './acordo.js';
 import * as C from './calc.js';
 import { pixCopiaECola } from './pix.js';
 
@@ -83,6 +83,10 @@ const ICON = {
   alerta: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
   entrada: '<circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="m8 12 4 4 4-4"/>',
   lua: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  recibo: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/>',
+  desfazer: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>',
+  celular: '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
+  dinheiro: '<rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
   sair: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
   escudo: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
@@ -230,10 +234,10 @@ function telaConfirmar(aviso = '') {
 }
 
 const RECURSOS_ACESSO = () => [
-  ['agenda', 'Agenda de vencimentos', 'O que vence hoje, nos próximos dias e o que está em atraso, com filtro por período e cliente.'],
+  ['agenda', 'Agenda e previsão de recebimentos', 'O que vence hoje, nos próximos dias e o que está em atraso, e quanto vai entrar em cada dia e em cada mês.'],
   ['aportes', 'Crédito com a sua regra', 'Pagamento único, só juros, parcelas iguais (Price), SAC ou parcelas definidas por você. Juros simples ou compostos.'],
-  ['grafico', 'Previsão de recebimentos', 'Quanto entra em cada dia dos próximos 30 dias e em cada um dos próximos 12 meses.'],
-  ['clientes', 'Acesso para a equipe', 'Mais de uma pessoa na mesma conta, no celular ou no computador.'],
+  ['recibo', 'Recibos e acordos em PDF', 'Emita recibos e documentos de acordo em 1 clique.'],
+  ['celular', 'Feito para o celular', 'Instale como aplicativo na tela inicial, use no tema claro ou escuro e divida o acesso com a sua equipe.'],
 ].map(([i, t, d]) => `<li><span class="ac-ic">${icone(i)}</span><div><b>${t}</b><span>${d}</span></div></li>`).join('');
 
 function telaAcesso(modo = 'entrar', aviso = '') {
@@ -488,9 +492,11 @@ function linhaParcela(p, o = {}) {
     : st === 'hoje' ? 'vence hoje'
     : `${o.semCliente ? 'vence ' : ''}${diaSem(p.vencimento)} ${data(p.vencimento)}`;
   const parc = `Parcela ${p.num}/${n}`;
-  const acao = leitura() ? '' : p.recebido_em
-    ? `<button class="btn peq sec" data-a="desfazer" data-id="${p.id}">Desfazer</button>`
-    : checkBtn(p, st === 'atrasada', `parcela ${p.num}/${n}${o.semCliente ? '' : ` de ${esc(c?.nome || '')}`}`);
+  if (p.recebido_em) preparoPDF();
+  const acao = p.recebido_em
+    ? `<button class="btn peq sec ic-movel" data-a="recibo" data-id="${p.id}" title="Recibo em PDF" aria-label="Recibo em PDF da parcela ${p.num}/${n}">${icone('recibo')}<span class="so-largo">Recibo</span></button>`
+      + (leitura() ? '' : `<button class="btn peq sec ic-movel" data-a="desfazer" data-id="${p.id}" title="Desfazer recebimento" aria-label="Desfazer recebimento da parcela ${p.num}/${n}">${icone('desfazer')}<span class="so-largo">Desfazer</span></button>`)
+    : leitura() ? '' : checkBtn(p, st === 'atrasada', `parcela ${p.num}/${n}${o.semCliente ? '' : ` de ${esc(c?.nome || '')}`}`);
   const [cor, rot] = ST_PILL[st];
   return `<div class="item st-${st}">
     ${o.semCliente ? `<span class="av av-num" aria-hidden="true">${p.num}</span>` : avatar(c)}
@@ -1089,6 +1095,63 @@ async function montarAcordo(id) {
   return { blob, nome: `acordo_${slug}_${h}.pdf`, a };
 }
 
+// Recibo de pagamento em PDF ---------------------------------------------------------
+async function montarRecibo(id) {
+  const p = S.dados.parcelas.find(x => x.id === id);
+  if (!p?.recebido_em) throw new Error('Esta parcela ainda não foi recebida.');
+  const a = S.ap.get(p.aporte_id); const c = S.cli.get(a?.cliente_id) || {}; const conta = S.perfil.conta || {};
+  const ps = S.parcPorAp.get(p.aporte_id) || [];
+  // O valor recebido paga primeiro a multa, depois os juros e por último o capital.
+  const total = r2(p.valor_recebido), multa = r2(p.mora || 0), pago = r2(total - multa);
+  const juros = r2(Math.min(pago, p.juros)), capital = r2(pago - p.juros);
+  const linhas = [multa ? ['Multa de atraso', moeda(multa)] : null, ['Juros', moeda(juros)],
+    capital > 0.004 ? ['Capital (abate o saldo)', moeda(capital)] : null, ['Total recebido', moeda(total)]].filter(Boolean);
+  const abertas = ps.filter(x => !x.recebido_em);
+  const devedor = `${c.nome || '(nome do cliente)'}${c.documento ? `, CPF/CNPJ ${c.documento},` : ''}`;
+  const blob = await gerarReciboPDF({
+    numero: `${a.id.replace(/-/g, '').slice(0, 6).toUpperCase()}-${String(p.num).padStart(2, '0')}`,
+    emitido: new Date().toLocaleDateString('pt-BR'),
+    credor: { nome: conta.credor_nome || conta.nome, doc: conta.credor_doc, endereco: conta.credor_endereco },
+    valor: moeda(total), extenso: valorPorExtenso(total),
+    texto: `Recebi de ${devedor} a quantia acima, referente à parcela ${p.num} de ${ps.length} do crédito de ${moeda(a.valor)} concedido em ${dataBR(a.data_aporte)}, com vencimento em ${dataBR(p.vencimento)}, paga em ${dataBR(p.recebido_em)}.${p.obs ? ` Observação: ${p.obs}.` : ''}`,
+    linhas,
+    nota: capital < -0.004 ? `Os juros que faltaram (${moeda(-capital)}) somaram ao saldo devedor.` : '',
+    saldo: abertas.length ? `Saldo do crédito na emissão deste recibo: ${moeda(soma(abertas, x => x.amortizacao))} em capital, com ${plural(abertas.length, 'parcela em aberto', 'parcelas em aberto')}.` : 'Crédito quitado na emissão deste recibo.',
+    cidade: conta.credor_cidade, dataExtenso: dataExtenso(p.recebido_em),
+  });
+  const slug = norm(c.nome).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'cliente';
+  return { blob, nome: `recibo_${slug}_${p.recebido_em}_parcela${p.num}.pdf` };
+}
+
+// No celular, o PDF abre direto para compartilhar (WhatsApp, e-mail...); no computador, baixa.
+async function entregarPDF(blob, nome, titulo) {
+  const arq = new File([blob], nome, { type: 'application/pdf' });
+  if (matchMedia('(max-width: 899.98px)').matches && navigator.canShare?.({ files: [arq] })) {
+    try { await navigator.share({ files: [arq], title: titulo }); return 'compartilhado'; }
+    catch (e) { if (e.name === 'AbortError') return 'cancelado'; }
+  }
+  baixar(nome, blob, 'application/pdf');
+  return 'baixado';
+}
+
+// Carrega o gerador de PDF em segundo plano, uma vez, para o clique no recibo ser rápido.
+function preparoPDF() {
+  if (preparoPDF.feito) return;
+  preparoPDF.feito = true;
+  setTimeout(() => prepararPDF().catch(() => { preparoPDF.feito = false; }), 0);
+}
+
+// Mensagem com um botão de ação (ex.: "Recebimento registrado · Emitir recibo").
+function toastAcao(msg, rotulo, dados) {
+  const t = document.createElement('div'); t.className = 'toast ok com-acao';
+  const s = document.createElement('span'); s.textContent = msg; t.appendChild(s);
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-acao'; b.textContent = rotulo;
+  for (const [k, v] of Object.entries(dados)) b.dataset[k] = v;
+  t.appendChild(b);
+  $('#toasts').appendChild(t);
+  setTimeout(() => t.remove(), 9000);
+}
+
 // Exportação ------------------------------------------------------------------------
 function baixar(nome, conteudo, tipo) {
   const blob = conteudo instanceof Blob ? conteudo : new Blob([conteudo], { type: tipo });
@@ -1204,16 +1267,24 @@ const ACOES = {
       <p>Gera o instrumento particular de acordo com as condições, a tabela de parcelas e os termos definidos em Configurações › Dados do acordo.</p>
       ${S.perfil.conta?.credor_nome ? '' : '<p class="nota">' + icone('alerta') + '<span>Os dados do credor ainda não foram preenchidos (Configurações › Dados do acordo). O PDF sai com espaços em branco para completar à mão.</span></p>'}
       <div class="acoes">
-        <button class="btn pri" data-a="acordo-gerar" data-id="${a.id}">${icone('baixar')}Baixar PDF</button>
-        ${leitura() ? '' : `<button class="btn sec" data-a="acordo-gerar" data-id="${a.id}" data-guardar="1">Baixar e guardar nos documentos do cliente</button>`}
+        <button class="btn pri" data-a="acordo-gerar" data-id="${a.id}">${icone('documento')}Gerar PDF</button>
+        ${leitura() ? '' : `<button class="btn sec" data-a="acordo-gerar" data-id="${a.id}" data-guardar="1">Gerar e guardar nos documentos do cliente</button>`}
         <button class="btn sec" data-a="ap-ver" data-id="${a.id}">Voltar</button>
       </div>`);
+  },
+  recibo: async (d, el) => {
+    el.disabled = true;
+    try {
+      const { blob, nome } = await montarRecibo(d.id);
+      if (await entregarPDF(blob, nome, 'Recibo de pagamento') === 'baixado') toast('Recibo gerado', 'ok');
+    } catch (e) { toast(e.message || 'Não foi possível gerar o recibo', 'erro'); }
+    finally { if (el.isConnected) el.disabled = false; }
   },
   'acordo-gerar': async (d, el) => {
     el.disabled = true;
     try {
       const { blob, nome, a } = await montarAcordo(d.id);
-      baixar(nome, blob, 'application/pdf');
+      await entregarPDF(blob, nome, 'Acordo de pagamento');
       if (d.guardar) {
         const arq = new File([blob], nome, { type: 'application/pdf' });
         await tentar(() => S.store.enviarDocumento(S.perfil.conta?.id || S.perfil.membro?.conta_id, a.cliente_id, arq, `Acordo ${dataBR(hoje())} - crédito de ${moeda(a.valor)}.pdf`), 'Acordo gerado e guardado nos documentos');
@@ -1256,6 +1327,8 @@ function abrirAjuda() {
     <p>Todos os dados são protegidos por criptografia, com segurança, discrição e total sigilo. A conexão com o CredFlux é sempre protegida (HTTPS) e as informações ficam criptografadas no armazenamento. Cada conta só acessa os próprios dados, e as senhas não ficam guardadas em texto. Os documentos dos clientes ficam numa pasta privada e só abrem por links temporários. O administrador do serviço vê apenas as contas e os pagamentos da assinatura, nunca os seus clientes e créditos. Na demonstração, os dados ficam só neste navegador.</p>
     <h3>Receber uma parcela</h3>
     <p>Use o botão de confirmar (✓) ao lado da parcela ou <b>Registrar recebimento</b>, no Início. Dá para receber a parcela inteira, só os juros ou outro valor; antes de confirmar, o sistema mostra como ficam o saldo e as próximas parcelas. O dinheiro paga primeiro a multa, depois os juros e por último o capital. Para corrigir, use <b>Desfazer</b> na Agenda ou no crédito.</p>
+    <h3>Recibo e acordo em PDF</h3>
+    <p>Depois de receber, toque em <b>Emitir recibo</b> na mensagem que aparece, ou no botão <b>Recibo</b> da parcela, na Agenda ou no crédito. O recibo sai em PDF com o valor por extenso, a divisão entre multa, juros e capital e a assinatura do credor. No celular, o recibo e o acordo já abrem para enviar pelo WhatsApp; no computador, são baixados.</p>
     <h3>Atrasos e multa</h3>
     <p>A multa é por crédito e conta desde a parcela mais antiga em aberto: na taxa fixa, os juros do contrato ÷ 30 por dia; nas outras formas, o saldo × a taxa mensal ÷ 30 por dia. Ela pode ser dispensada ao receber. <b>Cobrar</b>, no Início, abre o WhatsApp do cliente em atraso; com mais de um cliente, abre a Agenda nos atrasos.</p>
     <h3>Agenda</h3>
@@ -1291,6 +1364,7 @@ function abrirRecebimento(id) {
       <div class="acoes"><button class="btn ok" autofocus>Confirmar recebimento</button><button type="button" class="btn sec" data-a="fechar">Cancelar</button></div>
     </form>`);
   previaRecebimento($('form[data-f="receber"]'), true);
+  preparoPDF();
 }
 
 // Calcula a multa e o efeito do valor nas parcelas. preencher: põe no campo o valor do modo escolhido.
@@ -1416,7 +1490,7 @@ const FORMS = {
     const obs = String(fd.get('obs') || '').trim();
     const aporteId = k.a.id;
     if (!k.res.refeitas) {
-      await tentar(() => S.store.receber(k.p.id, k.data, r2(k.valor), obs, k.mora), 'Recebimento registrado');
+      await tentar(() => S.store.receber(k.p.id, k.data, r2(k.valor), obs, k.mora));
     } else {
       const a = k.a;
       const aporte = { id: a.id, cliente_id: a.cliente_id, valor: a.valor, data_aporte: a.data_aporte, taxa: a.taxa, taxa_periodo: a.taxa_periodo, regime: a.regime,
@@ -1425,9 +1499,13 @@ const FORMS = {
       const parcelas = k.res.parcelas.map(x => ({ num: x.num, vencimento: x.vencimento, valor: r2(x.valor), juros: r2(x.juros), amortizacao: r2(x.amortizacao),
         recebido_em: x.recebido_em || null, valor_recebido: x.recebido_em ? r2(x.valor_recebido) : null, mora: x.recebido_em ? r2(x.mora || 0) : 0,
         obs: x.id === k.p.id ? (obs || null) : (x.obs || null) }));
-      await tentar(() => S.store.salvarAporte(aporte, parcelas), 'Recebimento registrado e parcelas recalculadas');
+      await tentar(() => S.store.salvarAporte(aporte, parcelas));
     }
     fechar(); await recarregar();
+    // a parcela recebida pode ter ganhado outro id ao refazer as seguintes: acha pelo crédito e pelo vencimento
+    const recebida = S.dados.parcelas.find(x => x.aporte_id === aporteId && x.vencimento === k.p.vencimento && x.recebido_em === k.data);
+    const msg = k.res.refeitas ? 'Recebimento registrado e parcelas recalculadas' : 'Recebimento registrado';
+    if (recebida) toastAcao(msg, 'Emitir recibo', { a: 'recibo', id: recebida.id }); else toast(msg, 'ok');
     if (S.view !== 'inicio' && S.view !== 'agenda') verAporte(aporteId);
   },
   async acordo(fd) {

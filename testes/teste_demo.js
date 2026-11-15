@@ -136,6 +136,18 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     const depois = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.filter(p=>p.recebido_em).length`);
     ok(depois === antes + 1, `Recebimento registrado (${antes} -> ${depois})`);
 
+    // Recibo em um clique: a mensagem do recebimento traz "Emitir recibo" e o PDF sai na hora
+    ok(await avaliar(`document.querySelector('#toasts .toast-acao')?.textContent`) === 'Emitir recibo', 'Depois de receber, a mensagem oferece "Emitir recibo"');
+    await foto('m05a_recebido_recibo', false);
+    await avaliar(`(()=>{window.__pdfs=[]; const o=HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click=function(){ if(this.download && /\\.pdf$/.test(this.download)){ const nome=this.download;
+        fetch(this.href).then(r=>r.blob()).then(b=>new Promise(ok=>{const f=new FileReader(); f.onload=()=>ok(f.result); f.readAsDataURL(b);}))
+          .then(u=>window.__pdfs.push({nome, url:u})); return; } return o.call(this); };})()`);
+    await clicar('#toasts .toast-acao'); await espera(4000);
+    const rec = await avaliar(`window.__pdfs.find(p=>/^recibo_/.test(p.nome)) || null`);
+    ok(rec && /^recibo_.+_parcela\d+\.pdf$/.test(rec.nome) && rec.url.length > 4000, `Recibo em PDF gerado (${rec?.nome})`);
+    if (rec) fs.writeFileSync(path.join(SAIDA, 'recibo.pdf'), Buffer.from(rec.url.split(',')[1], 'base64'));
+
     // Parcela em atraso: botão vermelho, multa e "só os juros" (recalcula as seguintes)
     await clicar('[data-a="nav"][data-v="inicio"]'); await espera(300);
     ok(await avaliar(`(()=>{const b=document.querySelector('.item.st-atrasada .ck'); return !!b && b.classList.contains('ruim') && getComputedStyle(b).backgroundColor==='rgb(201, 48, 44)' && /check-branco/.test(b.querySelector('img').src)})()`), 'Parcela atrasada com o botão vermelho preenchido');
@@ -274,6 +286,7 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await clicar('[data-a="agenda-ir"][data-situacao="recebida"]'); await espera(300);
     ok(await avaliar(`document.querySelector('select[name=periodo]').value==='mes' && document.querySelector('select[name=situacao]').value==='recebida' && [...document.querySelectorAll('.item')].every(i=>i.classList.contains('st-recebida'))`), 'Ver extrato abre a Agenda com as recebidas no mês');
     ok(await avaliar(`[...document.querySelectorAll('.item .pill')].every(p=>p.textContent==='Pago' && p.classList.contains('verde'))`), 'Pílula "Pago" em verde');
+    ok(await avaliar(`(()=>{const ls=[...document.querySelectorAll('.item.st-recebida')]; return ls.length>0 && ls.every(l=>l.querySelector('[data-a="recibo"]'))})()`), 'Cada parcela recebida tem o botão Recibo');
     await foto('d02b_extrato');
     await clicar('[data-a="nav"][data-v="inicio"]'); await espera(300);
     await clicar('[data-a="rec-lista"]'); await espera(300);
