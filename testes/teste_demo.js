@@ -25,20 +25,30 @@ async function avaliar(expr) {
   if (r.exceptionDetails) throw new Error('JS: ' + (r.exceptionDetails.exception?.description || r.exceptionDetails.text));
   return r.result.value;
 }
+let atual = { width: 375, height: 812, mobile: true };
+async function tela(larg, alt, movel) {
+  atual = { width: larg, height: alt, mobile: movel };
+  await cdp('Emulation.setDeviceMetricsOverride', { width: larg, height: alt, deviceScaleFactor: 1, mobile: movel });
+}
+// Página inteira: a janela cresce até a altura do conteúdo, para o menu fixo ficar no pé da foto (e não no meio).
 async function foto(nome, cheia = true) {
-  let clip;
   if (cheia) {
     const m = await cdp('Page.getLayoutMetrics');
-    clip = { x: 0, y: 0, width: m.cssContentSize.width, height: Math.min(m.cssContentSize.height, 6000), scale: 1 };
+    const alt = Math.max(atual.height, Math.min(Math.ceil(m.cssContentSize.height), 6000));
+    await cdp('Emulation.setDeviceMetricsOverride', { width: atual.width, height: alt, deviceScaleFactor: 1, mobile: atual.mobile });
+    await espera(200);
   }
-  const r = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: cheia, ...(clip ? { clip } : {}) });
+  const r = await cdp('Page.captureScreenshot', { format: 'png' });
+  if (cheia) { await tela(atual.width, atual.height, atual.mobile); await espera(100); }
   fs.writeFileSync(path.join(SAIDA, nome + '.png'), Buffer.from(r.data, 'base64'));
-}
-async function tela(larg, alt, movel) {
-  await cdp('Emulation.setDeviceMetricsOverride', { width: larg, height: alt, deviceScaleFactor: 1, mobile: movel });
 }
 const clicar = sel => avaliar(`(()=>{const e=document.querySelector(${JSON.stringify(sel)}); if(!e) throw new Error('não achei ${sel.replace(/'/g, '')}'); e.click(); return true})()`);
 const transborda = () => avaliar(`document.documentElement.scrollWidth - innerWidth`);
+const estilo = (sel, prop) => avaliar(`(()=>{const e=document.querySelector(${JSON.stringify(sel)}); return e ? getComputedStyle(e)[${JSON.stringify(prop)}] : null})()`);
+const visivel = sel => avaliar(`(()=>{const e=document.querySelector(${JSON.stringify(sel)}); return !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden'})()`);
+// parcelas em atraso segundo os dados guardados na demonstração
+const atrasosNoBanco = () => avaliar(`(()=>{const d=new Date(); const h=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return JSON.parse(localStorage.credflux_demo_v2).parcelas.filter(p=>!p.recebido_em && p.vencimento < h).length})()`);
 
 const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALHA') + ' ' + msg); };
 
@@ -75,16 +85,37 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     // Celular
     await tela(375, 812, true);
     await cdp('Page.navigate', { url: BASE + '?demo' }); await espera(1500);
-    ok(await avaliar(`!!document.querySelector('.kpis')`), 'Início carregou com os indicadores');
+    ok(await avaliar(`!!document.querySelector('.destaques .destaque.escuro')`), 'Início carregou com os destaques');
     ok(await transborda() <= 0, 'Início sem rolagem lateral no celular');
+    ok(await avaliar(`['--bg','--surface','--ink','--muted','--line','--brand-dark','--brand-dark-2','--brand','--brand-text','--danger'].map(v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim().toUpperCase()).join(' ')`)
+      === '#FFFFFF #FFFFFF #1B212D #646F82 #F0F1F3 #1B212D #363A3F #C8EE44 #1E7F5A #C9302C', 'Tokens de cor no :root');
+    ok(await estilo('.lateral', 'position') === 'fixed' && await avaliar(`Math.abs(document.querySelector('.lateral').getBoundingClientRect().bottom - innerHeight) < 1`), 'Menu fixo embaixo no celular');
+    ok(await avaliar(`document.querySelectorAll('.lateral .nav-it').length === 6 && [...document.querySelectorAll('.lateral .nav-it')].filter(e=>e.getClientRects().length).length === 5`), 'Menu de baixo com 5 itens (Ajuda fica em Ajustes)');
+    ok(await avaliar(`getComputedStyle(document.querySelector('.destaques')).gridTemplateColumns.split(' ').length === 1 && getComputedStyle(document.querySelector('.janelas')).gridTemplateColumns.split(' ').length === 1`), 'Cartões em uma coluna no celular');
+    const nAtraso = await atrasosNoBanco();
+    const cont = await avaliar(`document.querySelector('[data-v="agenda"] .nav-cont')?.firstChild?.textContent || ''`);
+    ok(nAtraso === 0 ? cont === '' : cont === String(nAtraso), `Contador da Agenda = parcelas em atraso (${cont || 'sem contador'} / ${nAtraso})`);
+    const graf = await avaliar(`(()=>{const cs=[...document.querySelectorAll('.graf-col')]; const h=c=>parseFloat(c.querySelector('.graf-b').style.getPropertyValue('--h'));
+      const outros=cs.filter(c=>!c.classList.contains('atual')).map(h).sort((a,b)=>b-a); const picos=cs.filter(c=>c.classList.contains('pico')).map(h);
+      return {n:cs.length, atual:cs[0].classList.contains('atual') && getComputedStyle(cs[0].querySelector('.graf-b')).backgroundColor,
+        picos:picos.length, certos: picos.every(v=>v>=outros[Math.min(1,outros.length-1)]), cor: cs.find(c=>c.classList.contains('pico')) ? getComputedStyle(cs.find(c=>c.classList.contains('pico')).querySelector('.graf-b')).backgroundColor : '',
+        rotulo: cs[0].querySelector('.graf-v').textContent, pe: document.querySelector('.graf-pe').textContent}})()`);
+    ok(graf.n === 12 && graf.atual === 'rgb(32, 32, 31)' && graf.picos <= 2 && graf.certos && (!graf.picos || graf.cor === 'rgb(41, 160, 115)'),
+      `Gráfico de 12 colunas: mês atual escuro, ${graf.picos} picos em verde (${graf.rotulo}; ${graf.pe.replace(/\s+/g, ' ').trim()})`);
+    ok(/^(-|\d+(,\d)?[kM]?)$/.test(graf.rotulo), `Valor curto em cima da coluna (${graf.rotulo})`);
+    const linha = await avaliar(`(()=>{const l=document.querySelector('.lista-g .item'); return l ? {av: l.querySelector('.av').getBoundingClientRect().width, ck: l.querySelector('.ck')?.getBoundingClientRect().width, sub: l.querySelector('.item-sub').textContent} : null})()`);
+    ok(linha && linha.av === 40 && linha.ck === 34 && /^Parcela \d+\/\d+ · /.test(linha.sub), `Próximos recebimentos: avatar 40px, botão 34px e "${linha?.sub}"`);
     await foto('m01_inicio');
 
     await clicar('[data-a="graf"][data-m="dias"]'); await espera(200);
+    ok(await avaliar(`document.querySelectorAll('.graf-col').length > 0 || /Nada a receber/.test(document.querySelector('.paineis').textContent)`), 'Gráfico de 30 dias');
     await foto('m02_inicio_30dias');
+    await clicar('[data-a="graf"][data-m="meses"]'); await espera(200);
 
     await clicar('[data-a="nav"][data-v="agenda"]'); await espera(300);
     ok(await avaliar(`document.querySelectorAll('.grupo').length > 0`), 'Agenda lista grupos de 30 dias');
     ok(await transborda() <= 0, 'Agenda sem rolagem lateral');
+    ok(await avaliar(`[...document.querySelectorAll('.grupo .pill')].every(p=>p.textContent==='A receber' ? !p.classList.contains('verde') && !p.classList.contains('vermelha') : true)`), 'Pílula "A receber" em cinza');
     await foto('m03_agenda');
 
     await avaliar(`(()=>{const s=document.querySelector('select[name=agrupar]'); s.value='mes'; s.dispatchEvent(new Event('change',{bubbles:true}));
@@ -101,8 +132,12 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     const depois = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.filter(p=>p.recebido_em).length`);
     ok(depois === antes + 1, `Recebimento registrado (${antes} -> ${depois})`);
 
-    // Parcela em atraso: multa e "só os juros" (recalcula as seguintes)
+    // Parcela em atraso: botão vermelho, multa e "só os juros" (recalcula as seguintes)
     await clicar('[data-a="nav"][data-v="inicio"]'); await espera(300);
+    ok(await avaliar(`(()=>{const b=document.querySelector('.item.st-atrasada .ck'); return !!b && b.classList.contains('ruim') && getComputedStyle(b).backgroundColor==='rgb(201, 48, 44)' && /check-branco/.test(b.querySelector('img').src)})()`), 'Parcela atrasada com o botão vermelho preenchido');
+    ok(await avaliar(`[...document.querySelectorAll('.lista-g .item:not(.st-atrasada) .ck')].every(b=>/^rgba?\\(255, 255, 255/.test(getComputedStyle(b).backgroundColor) && getComputedStyle(b).borderTopWidth==='1px' && /check-verde/.test(b.querySelector('img').src))`), 'Demais parcelas com o botão branco de borda');
+    ok(await avaliar(`(()=>{const s=getComputedStyle(document.querySelector('.destaque.escuro')); const b=getComputedStyle(document.querySelector('.lateral'));
+      return /gradient/.test(s.backgroundImage) && /gradient/.test(getComputedStyle(document.querySelector('.graf-col.atual .graf-b')).backgroundImage) && /blur/.test(b.backdropFilter || b.webkitBackdropFilter || '')})()`), 'Degradês (cartão escuro, gráfico) e menu translúcido com desfoque');
     await clicar('.item.st-atrasada [data-a="receber"]'); await espera(300);
     const mora = await avaliar(`(()=>{const l=document.getElementById('rec-mora-l'); return l && !l.hidden ? document.getElementById('rec-mora-t').textContent : ''})()`);
     ok(/multa/i.test(mora), `Multa de atraso oferecida (${mora})`);
@@ -115,8 +150,14 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     const db2 = await avaliar(`(()=>{const d=JSON.parse(localStorage.credflux_demo_v2); return {n:d.parcelas.filter(p=>p.recebido_em).length, mora:d.parcelas.filter(p=>p.mora>0).length}})()`);
     ok(db2.n === antes2 + 1 && db2.mora >= 1, `Recebimento só dos juros com multa gravado (${antes2} -> ${db2.n}, ${db2.mora} com multa)`);
 
+    // "Registrar recebimento": lista das parcelas em aberto e, depois, o modal de receber.
     // Pagamento parcial numa parcela Price: as seguintes são refeitas sobre o saldo
-    await avaliar(`[...document.querySelectorAll('.item')].find(i=>/Mercadinho/.test(i.textContent) && i.querySelector('[data-a="receber"]')).querySelector('[data-a="receber"]').click()`);
+    await clicar('[data-a="rec-lista"]'); await espera(300);
+    ok(await avaliar(`document.querySelectorAll('#rec-lista .item').length > 0 && !document.querySelector('#rec-lista .item.st-recebida')`), 'Registrar recebimento lista as parcelas em aberto');
+    await avaliar(`(()=>{const i=document.querySelector('[data-in="busca-rec"]'); i.value='mercad'; i.dispatchEvent(new Event('input',{bubbles:true}));})()`); await espera(200);
+    ok(await avaliar(`[...document.querySelectorAll('#rec-lista .item .item-tit')].every(t=>/Mercadinho/.test(t.textContent))`), 'Busca pelo cliente na lista de recebimento');
+    await foto('m05c_registrar_recebimento', false);
+    await avaliar(`[...document.querySelectorAll('#rec-lista .item')].find(i=>/Mercadinho/.test(i.textContent)).querySelector('[data-a="receber"]').click()`);
     await espera(300);
     const pid = await avaliar(`document.querySelector('form[data-f="receber"]').dataset.id`);
     const ap = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.find(p=>p.id==='${pid}').aporte_id`);
@@ -125,7 +166,7 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await avaliar(`(()=>{const v=document.querySelector('form[data-f="receber"] [name=valor]'); v.value='500,00'; v.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await espera(200);
     ok(/saldo devedor passa/.test(await avaliar(`document.getElementById('rec-previa').textContent`)), 'Prévia avisa que o saldo muda no pagamento parcial');
-    await foto('m05c_receber_parcial', false);
+    await foto('m05d_receber_parcial', false);
     await avaliar(`document.querySelector('form[data-f="receber"]').requestSubmit()`); await espera(700);
     const depoisP = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.filter(p=>p.aporte_id==='${ap}' && !p.recebido_em).map(p=>p.valor)`);
     ok(depoisP.length === antesP.length - 1 && depoisP[0] > antesP[1], `Parcelas seguintes refeitas (${antesP[1]} -> ${depoisP[0]})`);
@@ -133,6 +174,7 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
 
     await clicar('[data-a="nav"][data-v="clientes"]'); await espera(300);
     ok(await transborda() <= 0, 'Clientes sem rolagem lateral');
+    ok(await avaliar(`[...document.querySelectorAll('#lista-cli .item')].every(i=>/^[A-ZÀ-Ú?]{1,2}$/.test(i.querySelector('.av').textContent))`), 'Clientes com avatar de iniciais');
     await foto('m06_clientes');
     await clicar('[data-a="cli-ver"]'); await espera(500);
     await avaliar(`(()=>{const i=document.querySelector('[data-in="doc-arquivo"]'); const dt=new DataTransfer();
@@ -143,9 +185,9 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await foto('m07_cliente', false);
     await clicar('#dlg [data-a="fechar"]');
 
-    // Novo aporte
+    // Novo crédito
     await clicar('[data-a="nav"][data-v="aportes"]'); await espera(300);
-    await foto('m08_aportes');
+    await foto('m08_creditos');
     const nAp = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).aportes.length`);
     await clicar('.tit-linha [data-a="ap-novo"]'); await espera(300);
     await avaliar(`(()=>{const f=document.getElementById('f-aporte');
@@ -156,14 +198,15 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     const prev = await avaliar(`[document.querySelectorAll('.parc-lin').length, document.querySelector('.previa-cab b').textContent]`);
     ok(prev[0] === 6, `Prévia com 6 parcelas (${prev[0]}), total ${prev[1]}`);
     ok(/22\.15[0-9],/.test(prev[1].replace(/\s/g, '')), `Total Price 20.000 a 3% em 6x ~ R$ 22.152 (${prev[1]})`);
-    await foto('m09_novo_aporte', false);
+    await foto('m09_novo_credito', false);
     await avaliar(`document.getElementById('f-aporte').requestSubmit()`); await espera(500);
-    ok(await avaliar(`JSON.parse(localStorage.credflux_demo_v2).aportes.length`) === nAp + 1, 'Aporte gravado');
-    await foto('m10_aporte_detalhe', false);
+    ok(await avaliar(`JSON.parse(localStorage.credflux_demo_v2).aportes.length`) === nAp + 1, 'Crédito gravado');
+    await foto('m10_credito_detalhe', false);
 
     // Acordo em PDF guardado nos documentos do cliente
     const nDocs = await avaliar(`(JSON.parse(localStorage.credflux_demo_v2).documentos||[]).length`);
     await clicar('#dlg [data-a="acordo"]'); await espera(300);
+    await foto('m10b_acordo', false);
     await clicar('#dlg [data-a="acordo-gerar"][data-guardar="1"]'); await espera(5000);
     const docs = await avaliar(`(JSON.parse(localStorage.credflux_demo_v2).documentos||[]).map(d=>[d.nome,d.tamanho])`);
     ok(docs.length === nDocs + 1 && docs.at(-1)[1] > 3000, `Acordo em PDF gerado e guardado (${JSON.stringify(docs.at(-1))})`);
@@ -186,8 +229,12 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await clicar('#dlg [data-a="fechar"]');
 
     await clicar('[data-a="nav"][data-v="mais"]'); await espera(300);
-    ok(await avaliar(`!!document.querySelector('form[data-f="acordo"] textarea[name=termos_acordo]')`), 'Mais mostra os dados do acordo');
-    await foto('m11_mais');
+    ok(await avaliar(`!!document.querySelector('form[data-f="acordo"] textarea[name=termos_acordo]') && document.querySelector('.tit').textContent === 'Configurações'`), 'Configurações mostra os dados do acordo');
+    await foto('m11_configuracoes');
+    await clicar('.tit-linha [data-a="ajuda"]'); await espera(300);
+    ok(await avaliar(`document.getElementById('dlg').open && /Primeiros passos/i.test(document.getElementById('dlg-corpo').textContent)`), 'Ajuda abre no celular pela tela Configurações');
+    await foto('m11b_ajuda', false);
+    await clicar('#dlg [data-a="fechar"]');
     await clicar('[data-a="nav"][data-v="assinatura"]'); await espera(1500);
     ok(await avaliar(`/^000201/.test(document.getElementById('pix-codigo').value)`), 'Código Pix gerado');
     ok(await avaliar(`!!document.querySelector('#qr svg')`), 'QR Code desenhado');
@@ -197,12 +244,55 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await tela(1280, 860, false);
     await clicar('[data-a="nav"][data-v="inicio"]'); await espera(300);
     ok(await transborda() <= 0, 'Início sem rolagem lateral no computador');
+    const lat = await avaliar(`(()=>{const l=document.querySelector('.lateral'); const r=l.getBoundingClientRect(); return {w:r.width, x:r.left, cor:getComputedStyle(l).backgroundColor,
+      on:getComputedStyle(document.querySelector('.nav-it.on')).backgroundColor, logo:getComputedStyle(document.querySelector('.lateral-marca .marca-ic')).backgroundColor,
+      rot:[...document.querySelectorAll('.nav-rot')].map(e=>e.textContent).join('/'), itens:[...document.querySelectorAll('.lateral .nav-it')].filter(e=>e.getClientRects().length).map(e=>e.querySelector('.nav-t:not([hidden])').textContent).join(', ')}})()`);
+    ok(lat.w === 248 && lat.x === 0 && lat.cor === 'rgb(250, 250, 250)', `Barra lateral clara de 248px (${lat.w}px, ${lat.cor})`);
+    ok(lat.on === 'rgb(200, 238, 68)' && lat.logo === 'rgb(200, 238, 68)', 'Item ativo e logo em verde-limão');
+    ok(lat.rot === 'Menu/Conta' && /Início, Agenda, Clientes, Créditos, Configurações, Ajuda/.test(lat.itens), `Menu e Conta na barra lateral (${lat.itens})`);
+    ok(await visivel('.lateral-aviso') && /Criar conta de verdade/.test(await avaliar(`document.querySelector('.lateral-aviso').textContent`)), 'Aviso da demonstração no rodapé da barra lateral');
+    ok(await avaliar(`(()=>{const t=[...document.querySelectorAll('.destaque')].map(e=>Math.round(e.getBoundingClientRect().top)); return t.length===3 && t.every(v=>v===t[0])})()`), 'Três destaques lado a lado');
+    ok(await avaliar(`(()=>{const p=[...document.querySelectorAll('.paineis > .painel')].map(e=>e.getBoundingClientRect()); return p.length===2 && Math.round(p[0].top)===Math.round(p[1].top) && p[0].right < p[1].left})()`), 'Gráfico e Próximos recebimentos lado a lado');
+    ok(/^(Bom dia|Boa tarde|Boa noite)/.test(await avaliar(`document.querySelector('.pag-cab .tit').textContent`)) && /\d{4} · /.test(await avaliar(`document.querySelector('.pag-sub').textContent`)), 'Saudação, data por extenso e carteira');
     await foto('d01_inicio');
+
+    // Cobrar: um cliente só abre o WhatsApp; mais de um abre a Agenda nos atrasos
+    const cobrar = await avaliar(`(()=>{const e=document.querySelector('.destaque.perigo .lnk.ruim'); return e ? {tag:e.tagName, href:e.getAttribute('href')||'', per:e.dataset.periodo||''} : null})()`);
+    if (!cobrar) ok(await avaliar(`!document.querySelector('.destaque.perigo') && /Tudo em dia/.test(document.querySelectorAll('.destaque')[1].textContent)`), 'Sem atraso, o cartão fica neutro');
+    else if (cobrar.tag === 'A') ok(/^https:\/\/wa\.me\/55\d{10,11}$/.test(cobrar.href), `Cobrar abre o WhatsApp do cliente (${cobrar.href})`);
+    else {
+      await clicar('.destaque.perigo .lnk.ruim'); await espera(300);
+      ok(await avaliar(`document.querySelector('select[name=periodo]').value==='atraso' && document.querySelectorAll('.item').length>0 && [...document.querySelectorAll('.item')].every(i=>i.classList.contains('st-atrasada'))`), 'Cobrar com mais de um cliente abre a Agenda nos atrasos');
+      await clicar('[data-a="nav"][data-v="inicio"]'); await espera(300);
+    }
+    // Ver extrato: Agenda com as recebidas no mês
+    await clicar('[data-a="agenda-ir"][data-situacao="recebida"]'); await espera(300);
+    ok(await avaliar(`document.querySelector('select[name=periodo]').value==='mes' && document.querySelector('select[name=situacao]').value==='recebida' && [...document.querySelectorAll('.item')].every(i=>i.classList.contains('st-recebida'))`), 'Ver extrato abre a Agenda com as recebidas no mês');
+    ok(await avaliar(`[...document.querySelectorAll('.item .pill')].every(p=>p.textContent==='Pago' && p.classList.contains('verde'))`), 'Pílula "Pago" em verde');
+    await foto('d02b_extrato');
+    await clicar('[data-a="nav"][data-v="inicio"]'); await espera(300);
+    await clicar('[data-a="rec-lista"]'); await espera(300);
+    await foto('d01b_registrar_recebimento', false);
+    await clicar('#rec-lista [data-a="receber"]'); await espera(300);
+    ok(await avaliar(`!!document.querySelector('#dlg form[data-f="receber"]')`), 'Da lista, o botão abre o modal de receber');
+    await foto('d01c_receber', false);
+    await clicar('#dlg [data-a="fechar"]');
+    await clicar('.lateral [data-a="ajuda"]'); await espera(300);
+    ok(await avaliar(`document.getElementById('dlg').open && /Atrasos e multa/i.test(document.getElementById('dlg-corpo').textContent)`), 'Ajuda abre uma janela com o texto fixo');
+    await foto('d01d_ajuda', false);
+    await clicar('#dlg [data-a="fechar"]');
+    await clicar('[data-a="graf"][data-m="dias"]'); await espera(200);
+    await foto('d01e_inicio_30dias');
+    await clicar('[data-a="graf"][data-m="meses"]'); await espera(200);
+
     await clicar('[data-a="nav"][data-v="agenda"]'); await espera(300);
     ok(await transborda() <= 0, 'Agenda sem rolagem lateral no computador');
     await foto('d02_agenda');
     await clicar('[data-a="nav"][data-v="clientes"]'); await espera(300);
     await foto('d03_clientes');
+    await clicar('[data-a="cli-ver"]'); await espera(500);
+    await foto('d03b_cliente', false);
+    await clicar('#dlg [data-a="fechar"]');
     await clicar('[data-a="cli-novo"]'); await espera(300);
     await foto('d04_novo_cliente', false);
     await clicar('#dlg [data-a="fechar"]');
@@ -213,9 +303,11 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await clicar('#dlg [data-a="fechar"]');
     await clicar('button.item[data-a="ap-ver"]'); await espera(300);
     await foto('d07_credito_detalhe', false);
+    await clicar('#dlg [data-a="acordo"]'); await espera(300);
+    await foto('d07b_acordo', false);
     await clicar('#dlg [data-a="fechar"]');
     await clicar('[data-a="nav"][data-v="mais"]'); await espera(300);
-    await foto('d08_mais');
+    await foto('d08_configuracoes');
     await clicar('[data-a="nav"][data-v="assinatura"]'); await espera(1000);
     await foto('d09_assinatura');
 
@@ -233,6 +325,8 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await foto('m00_tela_inicial');
     await tela(1280, 860, false);
     await cdp('Page.navigate', { url: BASE }); await espera(2500);
+    ok(await avaliar(`(()=>{const m=document.querySelector('.ac-marca').getBoundingClientRect(), f=document.querySelector('.ac-lado').getBoundingClientRect();
+      return /gradient/.test(getComputedStyle(document.querySelector('.ac'),'::before').backgroundImage) && getComputedStyle(document.querySelector('.ac-marca h1')).color==='rgb(255, 255, 255)' && m.left===0 && m.right<=f.left && Math.round(m.top)===Math.round(f.top)})()`), 'Login em duas colunas com o painel escuro à esquerda');
     await foto('d00_tela_inicial');
   } catch (e) {
     verif.push('FALHA ' + e.message);

@@ -23,6 +23,11 @@ const fmtTaxa = a => a.modalidade === 'fixa' ? `${C.num(Number(a.taxa), 2)}% em 
 const tamanho = b => b >= 1048576 ? `${C.num(b / 1048576, 1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
 const dataExtenso = s => { const d = parseISO(s); return `${d.getDate()} de ${MESL[d.getMonth()]} de ${d.getFullYear()}`; };
 const soDigitos = s => String(s || '').replace(/\D/g, '');
+const DSEML = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : '');
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+// Valor curto para o gráfico: 4,2k; 1,5M; "-" quando não há nada.
+const abrev = v => (!v ? '-' : v >= 1e6 ? `${C.num(v / 1e6, 1)}M` : v >= 1000 ? `${C.num(v / 1000, 1)}k` : C.num(v, 0));
 
 function toast(msg, tipo = '') {
   const t = document.createElement('div');
@@ -51,18 +56,34 @@ const ICON = {
   agenda: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
   clientes: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   aportes: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
-  mais: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  ajustes: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  ajuda: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
   grafico: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
   documento: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/>',
   imagem: '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
   enviar: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
   baixar: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
   alerta: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+  entrada: '<circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="m8 12 4 4 4-4"/>',
 };
 const icone = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
-// Marca do CredFlux: um "C" que termina em seta (o crédito que volta).
-const MARCA_ICONE = '<svg class="marca-ic" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="currentColor"/><g fill="none" stroke="var(--marca-traco, #fff)" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"><path d="M352 160A136 136 0 1 0 256 392H400"/><path d="M356 348l44 44-44 44"/></g></svg>';
+// Marca do CredFlux: um "C" que termina em seta (o crédito que volta), num quadrado verde.
+const MARCA_ICONE = '<span class="marca-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><g fill="none" stroke="currentColor" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"><path d="M352 160A136 136 0 1 0 256 392H400"/><path d="M356 348l44 44-44 44"/></g></svg></span>';
 const MARCA = `<span class="logo">${MARCA_ICONE}<b>CredFlux</b></span>`;
+
+// Avatar do cliente: iniciais e uma cor fixa, tirada do id (oito cores no styles.css).
+const LIGACOES = new Set(['da', 'das', 'de', 'do', 'dos', 'e']);
+function iniciais(nome) {
+  const ps = String(nome || '').trim().split(/\s+/).filter(w => w && !LIGACOES.has(w.toLowerCase()));
+  if (!ps.length) return '?';
+  const a = ps[0][0];
+  const b = ps.slice(1).map(w => w[0]).find(x => x.toLowerCase() !== a.toLowerCase()) || ps[1]?.[0] || ps[0][1] || '';
+  return (a + b).toUpperCase();
+}
+const corDe = id => { let s = 0; for (const ch of String(id || '')) s = (s * 31 + ch.charCodeAt(0)) >>> 0; return `av${(s % 8) + 1}`; };
+const avatar = c => `<span class="av ${corDe(c?.id)}" aria-hidden="true">${esc(iniciais(c?.nome))}</span>`;
+const pill = (cor, t) => `<span class="pill${cor ? ' ' + cor : ''}">${t}</span>`;
+const checkBtn = (p, vermelho, rotulo) => `<button class="ck${vermelho ? ' ruim' : ''}" data-a="receber" data-id="${p.id}" title="Registrar recebimento" aria-label="Receber ${rotulo}"><img src="img/check-${vermelho ? 'branco' : 'verde'}.svg" width="16" height="16" alt=""></button>`;
 
 // Estado ------------------------------------------------------------------------
 const S = {
@@ -138,8 +159,29 @@ function resumoCliente(c) {
 }
 
 const ST_ROT = { recebida: 'Recebida', atrasada: 'Em atraso', hoje: 'Vence hoje', pendente: 'A receber' };
+// Pílula de cada situação na tela (a planilha continua com ST_ROT).
+const ST_PILL = { recebida: ['verde', 'Pago'], atrasada: ['vermelha', 'Em atraso'], hoje: ['', 'Vence hoje'], pendente: ['', 'A receber'] };
 
-// Telas de acesso ----------------------------------------------------------------
+// Telas de acesso: painel escuro da marca à esquerda (no celular, em cima) e o formulário ao lado.
+function molduraFora(lado, recursos = '') {
+  const pub = S.publica || {};
+  document.body.className = 'fora';
+  $('#app').innerHTML = `
+  <div class="ac${recursos ? '' : ' so-marca'}">
+    <section class="ac-marca">
+      ${MARCA}
+      <p class="ac-rot">Gestão de crédito para quem empresta dinheiro</p>
+      <h1>Clientes, créditos e parcelas em um só lugar</h1>
+      <p class="ac-desc">Cadastre cada crédito com o valor, a taxa e a forma de pagamento. O CredFlux gera as parcelas, mostra o que vence e o que está em atraso e calcula quanto você vai receber por dia e por mês.</p>
+    </section>
+    <main class="ac-lado">${lado}</main>
+    ${recursos ? `<section class="ac-rec">
+      <ul class="ac-lista">${recursos}</ul>
+      <footer class="ac-pe"><span>CredFlux</span>${pub.contato ? `<span>Contato: ${esc(pub.contato)}</span>` : ''}</footer>
+    </section>` : ''}
+  </div>`;
+}
+
 function telaAcesso(modo = 'entrar', aviso = '') {
   const pub = S.publica || {};
   const preco = pub.preco_mensal ? moeda(Number(pub.preco_mensal)) : '';
@@ -151,21 +193,10 @@ function telaAcesso(modo = 'entrar', aviso = '') {
     ['aportes', 'Crédito com a sua regra', 'Pagamento único, só juros, parcelas iguais (Price), SAC ou parcelas definidas por você. Juros simples ou compostos.'],
     ['grafico', 'Previsão de recebimentos', 'Quanto entra em cada dia dos próximos 30 dias e em cada um dos próximos 12 meses.'],
     ['clientes', 'Acesso para a equipe', 'Mais de uma pessoa na mesma conta, no celular ou no computador.'],
-  ].map(([i, t, d]) => `<li><span class="ini-ic">${icone(i)}</span><div><b>${t}</b><span>${d}</span></div></li>`).join('');
-  document.body.className = 'fora';
-  $('#app').innerHTML = `
-  <header class="ini-topo">
-    ${MARCA}
-    <a href="?demo" class="btn sec peq">Ver demonstração</a>
-  </header>
-  <main class="acesso inicial">
-    <section class="ini-texto">
-      <p class="ini-rot">Gestão de crédito para quem empresta dinheiro</p>
-      <h1>Clientes, créditos e parcelas em um só lugar</h1>
-      <p class="ini-desc">Cadastre cada crédito com o valor, a taxa e a forma de pagamento. O CredFlux gera as parcelas, mostra o que vence e o que está em atraso e calcula quanto você vai receber por dia e por mês.</p>
-      <ul class="ini-lista">${recursos}</ul>
-    </section>
-    <div class="ini-lado">
+  ].map(([i, t, d]) => `<li><span class="ac-ic">${icone(i)}</span><div><b>${t}</b><span>${d}</span></div></li>`).join('');
+  molduraFora(`
+    <div class="ac-topo"><a href="?demo" class="btn sec peq">Ver demonstração</a></div>
+    <div class="ac-caixa">
       <div class="cartao">
         <h2>Acesse sua conta</h2>
         <div class="abas">${abas}</div>
@@ -177,30 +208,24 @@ function telaAcesso(modo = 'entrar', aviso = '') {
           <button class="btn pri largo">${botao}</button>
         </form>
       </div>
-      ${preco ? `<div class="preco"><div><b>${preco}</b><span>por mês, pago por Pix</span></div>${pub.dias_teste ? `<span class="chip">${pub.dias_teste} dias de teste sem custo</span>` : ''}</div>` : ''}
+      ${preco ? `<div class="preco"><div><b>${preco}</b><span>por mês, pago por Pix</span></div>${pub.dias_teste ? pill('verde', `${pub.dias_teste} dias de teste sem custo`) : ''}</div>` : ''}
       <p class="centro dica">Quer ver antes? <a href="?demo" class="link">Abrir a demonstração com dados de exemplo</a></p>
-    </div>
-  </main>
-  <footer class="ini-pe"><span>CredFlux</span>${pub.contato ? `<span>Contato: ${esc(pub.contato)}</span>` : ''}</footer>`;
+    </div>`, recursos);
 }
 
 function telaNovaSenha() {
-  document.body.className = 'fora';
-  $('#app').innerHTML = `
-  <main class="acesso"><div class="acesso-cab">${MARCA}</div><div class="cartao">
+  molduraFora(`<div class="ac-caixa"><div class="cartao">
     <h2>Nova senha</h2>
     <form data-f="nova-senha">
       <label>Nova senha<input name="senha" type="password" minlength="6" autocomplete="new-password" required autofocus></label>
       <button class="btn pri largo">Gravar senha</button>
     </form>
-  </div></main>`;
+  </div></div>`);
 }
 
 function telaCriarConta() {
   const pub = S.perfil.config || {};
-  document.body.className = 'fora';
-  $('#app').innerHTML = `
-  <main class="acesso"><div class="acesso-cab">${MARCA}</div><div class="cartao">
+  molduraFora(`<div class="ac-caixa"><div class="cartao">
     <h2>Criar sua conta</h2>
     <p>Você entrou como <b>${esc(S.perfil.email)}</b>. Crie a conta onde ficam seus clientes e créditos.
     ${pub.dias_teste ? `Os primeiros ${pub.dias_teste} dias são de teste, sem custo.` : ''}</p>
@@ -209,56 +234,61 @@ function telaCriarConta() {
       <label>Seu nome<input name="seu" autocomplete="name"></label>
       <button class="btn pri largo">Criar conta</button>
     </form>
-    <p class="dica">Foi convidado para a conta de outra pessoa? Peça que ela inclua o e-mail ${esc(S.perfil.email)} em Mais › Pessoas com acesso e entre de novo.</p>
+    <p class="dica">Foi convidado para a conta de outra pessoa? Peça que ela inclua o e-mail ${esc(S.perfil.email)} em Configurações › Pessoas com acesso e entre de novo.</p>
     ${S.perfil.admin ? '<button class="btn largo" data-a="nav" data-v="admin">Painel do administrador</button>' : ''}
     <button class="btn sec largo" data-a="sair">Sair</button>
-  </div></main>`;
+  </div></div>`);
 }
 
 function telaSemConfig() {
-  document.body.className = 'fora';
-  $('#app').innerHTML = `
-  <main class="acesso"><div class="acesso-cab">${MARCA}</div><div class="cartao">
+  molduraFora(`<div class="ac-caixa"><div class="cartao">
     <h2>Sistema ainda não configurado</h2>
     <p>Preencha <code>config.js</code> com o endereço e a chave pública do Supabase (veja LEIAME.md).</p>
     <a class="btn pri largo" href="?demo">Ver demonstração</a>
-  </div></main>`;
+  </div></div>`);
 }
 
-// Estrutura principal ------------------------------------------------------------
-const NAV = [['inicio', 'Início'], ['agenda', 'Agenda'], ['clientes', 'Clientes'], ['aportes', 'Créditos'], ['mais', 'Mais']];
+// Estrutura principal: barra lateral escura (no celular, menu fixo embaixo) e o conteúdo.
+const NAV = [['inicio', 'Início', 'inicio'], ['agenda', 'Agenda', 'agenda'], ['clientes', 'Clientes', 'clientes'], ['aportes', 'Créditos', 'aportes']];
+
+function itemNav(v, ic, rotulo, extra = '') {
+  const on = S.view === v || (v === 'mais' && ['assinatura', 'admin'].includes(S.view));
+  return `<button class="nav-it${on ? ' on' : ''}" data-a="nav" data-v="${v}"${on ? ' aria-current="page"' : ''}>${icone(ic)}${rotulo}${extra}</button>`;
+}
 
 function render() {
   if (!S.perfil?.membro) { if (S.view === 'admin' && S.perfil?.admin) return renderAdminSolto(); return telaCriarConta(); }
   document.body.className = 'dentro';
-  const conta = S.perfil.conta;
-  const nav = NAV.map(([v, t]) => `<button class="nav-it ${S.view === v || (v === 'mais' && ['assinatura', 'admin'].includes(S.view)) ? 'on' : ''}" data-a="nav" data-v="${v}">${icone(v)}<span>${t}</span></button>`).join('');
+  const h = hoje();
+  const atrasos = pendentes().filter(p => p.vencimento < h).length;
+  const cont = atrasos ? `<span class="nav-cont">${atrasos}<span class="sr"> em atraso</span></span>` : '';
   $('#app').innerHTML = `
-  <header class="topo">
-    <div class="topo-nome">${MARCA_ICONE}<b>${esc(conta?.nome || 'CredFlux')}</b>${chipAssinatura()}</div>
-    ${['inicio', 'agenda'].includes(S.view) && !leitura() ? `<button class="btn pri peq" data-a="ap-novo">+ Crédito</button>` : ''}
-  </header>
-  <nav class="nav">${nav}</nav>
-  <main class="conteudo">${avisos()}${VIEWS[S.view]()}</main>`;
+  <div class="moldura">
+    <aside class="lateral"><div class="lateral-in">
+      <div class="lateral-marca">${MARCA_ICONE}<b>CredFlux</b></div>
+      <nav class="nav" aria-label="Menu">
+        <div class="nav-grupo"><p class="nav-rot">Menu</p>
+          ${NAV.map(([v, t, ic]) => itemNav(v, ic, `<span class="nav-t">${t}</span>`, v === 'agenda' ? cont : '')).join('')}
+        </div>
+        <div class="nav-grupo"><p class="nav-rot">Conta</p>
+          ${itemNav('mais', 'ajustes', '<span class="nav-t so-largo">Configurações</span><span class="nav-t so-movel">Ajustes</span>')}
+          <button class="nav-it nav-ajuda" data-a="ajuda">${icone('ajuda')}<span class="nav-t">Ajuda</span></button>
+        </div>
+      </nav>
+      ${demo() ? '<div class="lateral-aviso"><p>Você está no modo demonstração. Os dados ficam só neste navegador.</p><a href="./" data-a="sair-demo">Criar conta de verdade →</a></div>' : ''}
+    </div></aside>
+    <main class="conteudo">${avisos()}${VIEWS[S.view]()}</main>
+  </div>`;
   window.scrollTo(0, 0);
-}
-
-function chipAssinatura() {
-  if (demo()) return '<span class="chip info">Demonstração</span>';
-  const ate = S.perfil.conta?.assinatura_ate; if (!ate) return '';
-  const d = C.diffDias(hoje(), ate);
-  if (d < 0) return '<span class="chip ruim" data-a="nav" data-v="assinatura">Vencida</span>';
-  if (d <= 5) return `<span class="chip alerta" data-a="nav" data-v="assinatura">Vence em ${d} d</span>`;
-  return '';
 }
 
 function avisos() {
   const out = [];
-  if (demo()) out.push(`<div class="banner info">Demonstração: dados de exemplo guardados só neste navegador. <a href="./" data-a="sair-demo" class="link">Criar conta de verdade</a></div>`);
-  else if (leitura()) out.push(`<div class="banner ruim">A assinatura venceu em ${dataBR(S.perfil.conta.assinatura_ate)}. Seus dados estão guardados e visíveis, mas só voltam a ser editáveis após o pagamento. <button class="btn peq" data-a="nav" data-v="assinatura">Pagar com Pix</button></div>`);
+  if (demo()) out.push('<div class="banner demo so-movel"><span>Modo demonstração: os dados ficam só neste navegador.</span><a href="./" data-a="sair-demo" class="link">Criar conta de verdade →</a></div>');
+  else if (leitura()) out.push(`<div class="banner ruim">A assinatura venceu em ${dataBR(S.perfil.conta.assinatura_ate)}. Seus dados estão guardados e visíveis, mas só voltam a ser editáveis após o pagamento. <button class="btn peq sec" data-a="nav" data-v="assinatura">Pagar com Pix</button></div>`);
   else if (S.perfil.conta) {
     const d = C.diffDias(hoje(), S.perfil.conta.assinatura_ate);
-    if (d <= 5) out.push(`<div class="banner alerta">A assinatura vence em ${dataBR(S.perfil.conta.assinatura_ate)}. <button class="btn peq" data-a="nav" data-v="assinatura">Renovar com Pix</button></div>`);
+    if (d <= 5) out.push(`<div class="banner alerta">A assinatura vence em ${dataBR(S.perfil.conta.assinatura_ate)}. <button class="btn peq sec" data-a="nav" data-v="assinatura">Renovar com Pix</button></div>`);
   }
   return out.join('');
 }
@@ -267,61 +297,119 @@ function avisos() {
 function viewInicio() {
   const h = hoje(); const pend = pendentes();
   const entre = (a, b) => pend.filter(p => p.vencimento >= a && p.vencimento <= b);
-  const atraso = pend.filter(p => p.vencimento < h);
+  const atraso = pend.filter(p => p.vencimento < h).sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+  const moraTot = soma(S.dados.aportes, a => C.moraAte(a, S.parcPorAp.get(a.id) || [], h));
   const ini = inicioMes(h), fim = fimMes(h);
   const recMes = S.dados.parcelas.filter(p => p.recebido_em && p.recebido_em >= ini && p.recebido_em <= fim);
-  const moraTot = soma(S.dados.aportes, a => C.moraAte(a, S.parcPorAp.get(a.id) || [], h));
-  const cards = [
-    ['Hoje', entre(h, h), 'hoje', ''],
-    ['Próximos 7 dias', entre(h, addDias(h, 7)), 'p7', ''],
-    ['Próximos 30 dias', entre(h, addDias(h, 30)), 'p30', ''],
-    ['Em atraso', atraso, 'atraso', atraso.length ? 'ruim' : ''],
-  ].map(([t, ps, per, cls]) => `
-    <button class="kpi ${cls}" data-a="agenda-ir" data-periodo="${per}">
-      <span class="kpi-t">${t}</span><b>${moeda(soma(ps, p => p.valor))}</b><span class="kpi-s">${ps.length} parcela${ps.length === 1 ? '' : 's'}${per === 'atraso' && moraTot ? ` · multa ${moeda(moraTot)}` : ''}</span>
-    </button>`).join('');
-  const sem = !S.dados.aportes.length;
+  const doMes = S.dados.parcelas.filter(p => p.vencimento >= ini && p.vencimento <= fim);
+  const pagasMes = doMes.filter(p => p.recebido_em);
+  const previsto = soma(doMes, p => p.valor);
+  const pctMes = previsto ? Math.round(soma(pagasMes, p => p.valor_recebido) / previsto * 100) : 0;
+  // Carteira em aberto: créditos com alguma parcela a receber. A barra é o recebido sobre (recebido + a receber).
+  const aReceber = soma(pend, p => p.valor);
+  const abertos = new Set(pend.map(p => p.aporte_id));
+  const recebido = soma(S.dados.parcelas.filter(p => p.recebido_em && abertos.has(p.aporte_id)), p => p.valor_recebido);
+  const pct = recebido + aReceber > 0 ? Math.round(recebido / (recebido + aReceber) * 100) : 0;
+  // Cobrar: com um cliente só, abre o WhatsApp dele; com mais de um (ou sem telefone), abre a Agenda nos atrasos.
+  const cliAtraso = [...new Set(atraso.map(p => S.ap.get(p.aporte_id)?.cliente_id))];
+  const c1 = cliAtraso.length === 1 ? S.cli.get(cliAtraso[0]) : null;
+  const wa = whatsapp(c1?.telefone);
+  const cobrar = !atraso.length ? ''
+    : wa ? `<a class="lnk ruim" href="${wa}" target="_blank" rel="noopener">Cobrar →</a>`
+    : `<button class="lnk ruim" data-a="agenda-ir" data-periodo="atraso" data-cliente="${c1?.id || ''}">Cobrar →</button>`;
+  const dias = atraso.length ? C.diffDias(atraso[0].vencimento, h) : 0;
+  const hora = new Date().getHours();
+  const nome = demo() ? '' : String(S.perfil.membro?.nome || '').trim().split(/\s+/)[0];
+  const janela = (t, ps, per) => `
+    <button class="janela" data-a="agenda-ir" data-periodo="${per}">
+      <span class="jn-txt"><span class="jn-t">${t}</span><span class="jn-v">${moeda(soma(ps, p => p.valor))}</span></span>
+      ${pill('', plural(ps.length, 'parcela', 'parcelas'))}
+    </button>`;
+  const prox = listaAgrupada(pend.slice().sort((a, b) => a.vencimento.localeCompare(b.vencimento)), { limite: 6, ate: fimMes(h, 1) });
   return `
-  ${sem ? `<div class="vazio"><h2>Comece cadastrando um cliente e um crédito</h2><p>Depois de cadastrar, aqui aparece quanto você vai receber em cada dia e em cada mês.</p>
-    ${leitura() ? '' : '<button class="btn pri" data-a="cli-novo">Cadastrar cliente</button>'}</div>` : ''}
-  <section class="kpis">${cards}</section>
-  <section class="kpis dois">
-    <button class="kpi" data-a="agenda-ir" data-periodo="mes" data-situacao="recebida"><span class="kpi-t">Recebido em ${MESL[parseISO(h).getMonth()]}</span><b>${moeda(soma(recMes, p => p.valor_recebido))}</b><span class="kpi-s">${recMes.length} parcela${recMes.length === 1 ? '' : 's'}</span></button>
-    <button class="kpi" data-a="nav" data-v="aportes"><span class="kpi-t">Capital emprestado em aberto</span><b>${moeda(soma(pend, p => p.amortizacao))}</b><span class="kpi-s">Total a receber ${moeda(soma(pend, p => p.valor))}</span></button>
+  <header class="pag-cab">
+    <div>
+      <h1 class="tit">${hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'}${nome ? `, ${esc(nome)}` : ''}</h1>
+      <p class="pag-sub">${cap(DSEML[parseISO(h).getDay()])}, ${dataExtenso(h)}${S.perfil.conta?.nome ? ` · ${esc(S.perfil.conta.nome)}` : ''}</p>
+    </div>
+    ${leitura() ? '' : `<div class="pag-acoes">
+      <button class="btn sec" data-a="rec-lista">Registrar recebimento</button>
+      <button class="btn pri" data-a="ap-novo">+ Novo crédito</button>
+    </div>`}
+  </header>
+  ${S.dados.aportes.length ? '' : `<div class="vazio"><h2>Comece cadastrando um cliente e um crédito</h2><p>Depois de cadastrar, aqui aparece quanto você vai receber em cada dia e em cada mês.</p>
+    ${leitura() ? '' : '<button class="btn pri" data-a="cli-novo">Cadastrar cliente</button>'}</div>`}
+  <section class="destaques">
+    <button class="destaque escuro" data-a="nav" data-v="aportes">
+      <span class="dq-cab"><span class="dq-ic">${icone('aportes')}</span><span class="dq-tv">
+        <span class="dq-t">Capital emprestado em aberto</span>
+        <span class="dq-v">${moeda(soma(pend, p => p.amortizacao))}</span></span></span>
+      <span class="dq-s">Total a receber com juros: ${moeda(aReceber)}</span>
+      <span class="progresso" role="img" aria-label="${pct}% recebido"><span style="width:${pct}%"></span></span>
+      <span class="dq-pe"><span>Recebido ${moeda(recebido)}</span><span>${pct}% do total</span></span>
+    </button>
+    <div class="destaque${atraso.length ? ' perigo' : ''}">
+      <span class="dq-cab"><span class="dq-ic">${icone('alerta')}</span><span class="dq-tv">
+        <span class="dq-t">Em atraso</span>
+        <span class="dq-v">${moeda(soma(atraso, p => p.valor))}</span></span></span>
+      <span class="dq-s">${atraso.length ? `${plural(atraso.length, 'parcela', 'parcelas')} · ${c1 ? esc(c1.nome) : plural(cliAtraso.length, 'cliente', 'clientes')}${moraTot ? ` · multa ${moeda(moraTot)}` : ''}` : 'Nenhuma parcela em atraso'}</span>
+      <span class="dq-pe">${atraso.length ? pill('vermelha', `${plural(dias, 'dia', 'dias')} de atraso`) + cobrar : pill('', 'Tudo em dia')}</span>
+    </div>
+    <div class="destaque recebido">
+      <span class="dq-cab"><span class="dq-ic">${icone('entrada')}</span><span class="dq-tv">
+        <span class="dq-t">Recebido em ${MESL[parseISO(h).getMonth()]}</span>
+        <span class="dq-v">${moeda(soma(recMes, p => p.valor_recebido))}</span></span></span>
+      <span class="dq-s">${doMes.length ? `${pagasMes.length} de ${plural(doMes.length, 'parcela', 'parcelas')} do mês` : 'Nenhuma parcela vence neste mês'}</span>
+      <span class="dq-pe">${doMes.length ? pill('verde', `${pctMes}% do previsto`) : '<span></span>'}<button class="lnk" data-a="agenda-ir" data-periodo="mes" data-situacao="recebida">Ver extrato →</button></span>
+    </div>
   </section>
-  <section class="painel">
-    <div class="painel-cab"><h2>Previsão de recebimentos</h2>
-      <div class="seg">
-        <button class="${S.grafico === 'meses' ? 'on' : ''}" data-a="graf" data-m="meses">12 meses</button>
-        <button class="${S.grafico === 'dias' ? 'on' : ''}" data-a="graf" data-m="dias">30 dias</button>
-      </div></div>
-    ${S.grafico === 'meses' ? graficoMeses(pend) : graficoDias(pend)}
+  <section class="janelas">
+    ${janela('Hoje', entre(h, h), 'hoje')}
+    ${janela('Próximos 7 dias', entre(h, addDias(h, 7)), 'p7')}
+    ${janela('Próximos 30 dias', entre(h, addDias(h, 30)), 'p30')}
   </section>
-  <section class="painel">
-    <div class="painel-cab"><h2>Próximos recebimentos</h2><button class="btn peq sec" data-a="nav" data-v="agenda">Ver agenda</button></div>
-    ${listaParcelas(pend.slice().sort((a, b) => a.vencimento.localeCompare(b.vencimento)).slice(0, 8)) || '<p class="dica">Nenhuma parcela a receber.</p>'}
+  <section class="paineis">
+    <div class="painel">
+      <div class="painel-cab"><h2>Previsão de recebimentos</h2>
+        <div class="seg" role="group" aria-label="Período do gráfico">
+          <button class="${S.grafico === 'meses' ? 'on' : ''}" data-a="graf" data-m="meses">12 meses</button>
+          <button class="${S.grafico === 'dias' ? 'on' : ''}" data-a="graf" data-m="dias">30 dias</button>
+        </div>
+      </div>
+      ${S.grafico === 'meses' ? graficoMeses(pend) : graficoDias(pend)}
+    </div>
+    <div class="painel">
+      <div class="painel-cab"><h2>Próximos recebimentos</h2><button class="lnk" data-a="nav" data-v="agenda">Ver agenda →</button></div>
+      ${prox || `<p class="dica">Nada a receber até o fim de ${MESL[parseISO(fimMes(h, 1)).getMonth()]}.</p>`}
+    </div>
   </section>`;
 }
 
-function barras(linhas) {
+// Gráfico de colunas: mês (ou dia) atual em escuro, os dois maiores em verde e o resto em verde claro.
+function grafico(linhas, rotTotal) {
   const max = Math.max(1, ...linhas.map(l => l.v));
-  return `<div class="barras">${linhas.map(l => `
-    <button class="barra" data-a="agenda-ir" data-periodo="custom" data-de="${l.de}" data-ate="${l.ate}">
-      <span class="barra-r">${l.rot}</span>
-      <span class="barra-t"><span style="width:${(l.v / max * 100).toFixed(1)}%"></span></span>
-      <span class="barra-v">${l.v ? moeda(l.v) : '-'}</span>
-    </button>`).join('')}</div>`;
+  const ord = linhas.filter(l => l.v > 0).sort((a, b) => b.v - a.v);
+  const picos = ord.slice(0, 2).filter(l => l.v > (ord[2]?.v || 0));
+  const nomes = picos.slice().sort((a, b) => a.de.localeCompare(b.de)).map(l => l.nome);
+  const cls = linhas.length > 20 ? ' muitas' : linhas.length > 12 ? ' varias' : '';
+  return `<div class="graf${cls}">${linhas.map(l => `
+    <button class="graf-col${l.atual ? ' atual' : picos.includes(l) ? ' pico' : ''}" data-a="agenda-ir" data-periodo="custom" data-de="${l.de}" data-ate="${l.ate}" title="${l.nome}: ${moeda(l.v)}" aria-label="${l.nome}: ${moeda(l.v)}">
+      <span class="graf-v">${abrev(l.v)}</span>
+      <span class="graf-b" style="--h:${(l.v / max).toFixed(3)}"></span>
+      <span class="graf-m">${l.rot}</span>
+    </button>`).join('')}</div>
+  <div class="graf-pe"><span>${rotTotal}: <b>${moeda(soma(linhas, l => l.v))}</b></span>${nomes.length ? `<span>${nomes.length > 1 ? 'Picos' : 'Pico'} em ${nomes.join(' e ')}</span>` : ''}</div>`;
 }
 
 function graficoMeses(pend) {
   const h = hoje(); const linhas = [];
   for (let k = 0; k < 12; k++) {
     const de = inicioMes(h, k), ate = fimMes(h, k);
-    const ini = k === 0 ? h : de;
-    linhas.push({ rot: mesCurto(de), de: ini, ate, v: soma(pend.filter(p => p.vencimento >= ini && p.vencimento <= ate), p => p.valor) });
+    const ini = k === 0 ? h : de; // mês atual a partir de hoje; os atrasos ficam no quadro "Em atraso"
+    linhas.push({ rot: MES[parseISO(de).getMonth()], nome: mesCurto(de), de: ini, ate, atual: k === 0,
+      v: soma(pend.filter(p => p.vencimento >= ini && p.vencimento <= ate), p => p.valor) });
   }
-  const tot = soma(linhas, l => l.v);
-  return barras(linhas) + `<p class="rodape-graf">Total em 12 meses: <b>${moeda(tot)}</b>. Mês atual a partir de hoje; atrasos ficam no quadro "Em atraso".</p>`;
+  return grafico(linhas, 'Total em 12 meses');
 }
 
 function graficoDias(pend) {
@@ -329,33 +417,61 @@ function graficoDias(pend) {
   for (let k = 0; k <= 30; k++) {
     const d = addDias(h, k);
     const v = soma(pend.filter(p => p.vencimento === d), p => p.valor);
-    if (v) linhas.push({ rot: `${diaSem(d)} ${dataCurta(d)}`, de: d, ate: d, v });
+    if (v) linhas.push({ rot: `${d.slice(8, 10)}<span class="graf-mm">/${d.slice(5, 7)}</span>`, nome: `${diaSem(d)} ${dataCurta(d)}`, de: d, ate: d, atual: k === 0, v });
   }
   if (!linhas.length) return '<p class="dica">Nada a receber nos próximos 30 dias.</p>';
-  return barras(linhas) + `<p class="rodape-graf">Total em 30 dias: <b>${moeda(soma(linhas, l => l.v))}</b>. Só aparecem os dias com recebimento.</p>`;
+  return grafico(linhas, 'Total em 30 dias');
 }
 
-function listaParcelas(ps, opts = {}) {
-  if (!ps.length) return '';
-  const h = hoje();
-  return `<div class="lista">${ps.map(p => {
-    const a = S.ap.get(p.aporte_id); const c = S.cli.get(a?.cliente_id);
-    const st = C.statusParcela(p, h); const n = (S.parcPorAp.get(p.aporte_id) || []).length;
-    const sub = [opts.semCliente ? null : `Parcela ${p.num}/${n}`,
-      p.recebido_em ? `recebida em ${dataBR(p.recebido_em)}${p.mora ? ` (multa ${moeda(p.mora)})` : ''}` : `vence ${diaSem(p.vencimento)} ${dataBR(p.vencimento)}`,
-      st === 'atrasada' ? `${C.diffDias(p.vencimento, h)} dia${C.diffDias(p.vencimento, h) === 1 ? '' : 's'} de atraso` : null].filter(Boolean).join(' · ');
-    const acao = leitura() ? '' : p.recebido_em
-      ? `<button class="btn peq sec" data-a="desfazer" data-id="${p.id}">Desfazer</button>`
-      : `<button class="btn peq ok" data-a="receber" data-id="${p.id}">Receber</button>`;
-    return `<div class="item st-${st}">
-      <button class="item-pr" data-a="ap-ver" data-id="${p.aporte_id}">
-        <span class="item-tit">${opts.semCliente ? `Parcela ${p.num}/${n}` : esc(c?.nome || '?')}</span>
-        <span class="item-sub">${sub}</span>
-      </button>
-      <div class="item-val"><b>${moeda(p.recebido_em ? p.valor_recebido : p.valor)}</b><span class="tag ${st}">${ST_ROT[st]}</span></div>
-      <div class="item-ac">${acao}</div>
-    </div>`;
-  }).join('')}</div>`;
+// Linha de parcela: avatar, cliente e parcela, valor, situação e o botão de receber.
+// curto: sem pílula e sem os dias de atraso (Próximos recebimentos); semCliente: dentro do crédito.
+function linhaParcela(p, o = {}) {
+  const h = hoje(); const c = clienteDe(p);
+  const st = C.statusParcela(p, h); const n = (S.parcPorAp.get(p.aporte_id) || []).length;
+  const data = o.semCliente ? dataBR : dataCurta;
+  const dias = st === 'atrasada' ? C.diffDias(p.vencimento, h) : 0;
+  const quando = p.recebido_em ? `recebida em ${data(p.recebido_em)}${p.mora ? ` (multa ${moeda(p.mora)})` : ''}`
+    : st === 'atrasada' ? `venceu ${data(p.vencimento)}${o.curto ? '' : ` · ${plural(dias, 'dia', 'dias')} de atraso`}`
+    : st === 'hoje' ? 'vence hoje'
+    : `${o.semCliente ? 'vence ' : ''}${diaSem(p.vencimento)} ${data(p.vencimento)}`;
+  const parc = `Parcela ${p.num}/${n}`;
+  const acao = leitura() ? '' : p.recebido_em
+    ? `<button class="btn peq sec" data-a="desfazer" data-id="${p.id}">Desfazer</button>`
+    : checkBtn(p, st === 'atrasada', `parcela ${p.num}/${n}${o.semCliente ? '' : ` de ${esc(c?.nome || '')}`}`);
+  const [cor, rot] = ST_PILL[st];
+  return `<div class="item st-${st}">
+    ${o.semCliente ? `<span class="av av-num" aria-hidden="true">${p.num}</span>` : avatar(c)}
+    <button class="item-pr" data-a="ap-ver" data-id="${p.aporte_id}">
+      <span class="item-tit">${o.semCliente ? parc : esc(c?.nome || '?')}</span>
+      <span class="item-sub">${o.semCliente ? quando : `${parc} · ${quando}`}</span>
+    </button>
+    <div class="item-val"><b>${moeda(p.recebido_em ? p.valor_recebido : p.valor)}</b>${o.curto ? '' : pill(cor, rot)}</div>
+    <div class="item-ac">${acao}</div>
+  </div>`;
+}
+
+function listaParcelas(ps, o = {}) {
+  return ps.length ? `<div class="lista">${ps.map(p => linhaParcela(p, o)).join('')}</div>` : '';
+}
+
+// Parcelas em aberto, já em ordem de vencimento, agrupadas em Atrasado, Esta semana (até o sábado),
+// Ainda em {mês}, {mês seguinte} e, depois dele, um grupo por mês.
+function listaAgrupada(ps, { limite = Infinity, ate = '9999-12-31' } = {}) {
+  const h = hoje(); const d = parseISO(h);
+  const fimSemana = addDias(h, 6 - d.getDay()), fimM = fimMes(h), prox = inicioMes(h, 1).slice(0, 7);
+  const grupo = v => v < h ? ['atraso', 'Atrasado']
+    : v <= fimSemana ? ['semana', 'Esta semana']
+    : v <= fimM ? ['mes', `Ainda em ${MESL[d.getMonth()]}`]
+    : v.slice(0, 7) === prox ? [prox, cap(MESL[+prox.slice(5, 7) - 1])]
+    : [v.slice(0, 7), cap(mesRot(v.slice(0, 7)))];
+  let html = '', atual = '', n = 0;
+  for (const p of ps) {
+    if (p.vencimento > ate || n >= limite) break;
+    const [k, t] = grupo(p.vencimento);
+    if (k !== atual) { html += `<p class="gl-rot${k === 'atraso' ? ' ruim' : ''}">${t}</p>`; atual = k; }
+    html += linhaParcela(p, { curto: true }); n++;
+  }
+  return html ? `<div class="lista-g">${html}</div>` : '';
 }
 
 // Agenda ------------------------------------------------------------------------
@@ -404,7 +520,7 @@ function viewAgenda() {
   const val = p => p.recebido_em ? p.valor_recebido : p.valor;
   const opt = (v, t, sel) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${esc(t)}</option>`;
   return `
-  <h1 class="tit">Agenda de recebimentos</h1>
+  <div class="tit-linha"><h1 class="tit">Agenda de recebimentos</h1></div>
   <form class="filtros" data-f="agenda">
     <label>Período<select name="periodo">${PERIODOS.map(([v, t]) => opt(v, t, f.periodo)).join('')}</select></label>
     ${f.periodo === 'custom' ? `<label>De<input type="date" name="de" value="${f.de}"></label><label>Até<input type="date" name="ate" value="${f.ate}"></label>` : ''}
@@ -413,8 +529,8 @@ function viewAgenda() {
     <label>Agrupar<select name="agrupar">${opt('dia', 'Por dia', f.agrupar)}${opt('mes', 'Por mês', f.agrupar)}</select></label>
   </form>
   <div class="total-agenda">
-    <div><span>${ps.length} parcela${ps.length === 1 ? '' : 's'}</span><b>${moeda(soma(ps, val))}</b></div>
-    <button class="btn peq sec" data-a="csv-agenda">Baixar planilha</button>
+    <div><span>${plural(ps.length, 'parcela', 'parcelas')}</span><b>${moeda(soma(ps, val))}</b></div>
+    <button class="btn peq sec" data-a="csv-agenda">${icone('baixar')}Baixar planilha</button>
   </div>
   ${ps.length ? [...grupos].map(([k, l]) => `
     <section class="grupo">
@@ -429,13 +545,16 @@ function viewClientes() {
   const cs = S.dados.clientes.filter(c => !busca || norm(`${c.nome} ${c.documento || ''} ${c.telefone || ''}`).includes(busca));
   return `
   <div class="tit-linha"><h1 class="tit">Clientes</h1>${leitura() ? '' : '<button class="btn pri" data-a="cli-novo">+ Cliente</button>'}</div>
-  <input class="busca" type="search" placeholder="Buscar por nome, documento ou telefone" value="${esc(S.fCli)}" data-in="busca-cli">
+  <input class="busca" type="search" placeholder="Buscar por nome, documento ou telefone" value="${esc(S.fCli)}" data-in="busca-cli" aria-label="Buscar cliente">
   <div class="lista" id="lista-cli">${cs.map(c => {
     const r = resumoCliente(c);
+    const st = r.atraso ? pill('vermelha', `${moeda(r.atraso)} em atraso`)
+      : r.aReceber ? pill('', 'A receber') : r.aps.length ? pill('verde', 'Quitado') : pill('', 'Sem crédito');
     return `<button class="item" data-a="cli-ver" data-id="${c.id}">
+      ${avatar(c)}
       <span class="item-pr"><span class="item-tit">${esc(c.nome)}</span>
-        <span class="item-sub">${r.ativos} crédito${r.ativos === 1 ? '' : 's'} ativo${r.ativos === 1 ? '' : 's'}${c.telefone ? ' · ' + esc(c.telefone) : ''}</span></span>
-      <span class="item-val"><b>${moeda(r.aReceber)}</b>${r.atraso ? `<span class="tag atrasada">${moeda(r.atraso)} em atraso</span>` : '<span class="tag cinza">a receber</span>'}</span>
+        <span class="item-sub">${plural(r.ativos, 'crédito ativo', 'créditos ativos')}${c.telefone ? ' · ' + esc(c.telefone) : ''}</span></span>
+      <span class="item-val"><b>${moeda(r.aReceber)}</b>${st}</span>
     </button>`;
   }).join('') || '<p class="vazio-p">Nenhum cliente.</p>'}</div>`;
 }
@@ -451,7 +570,7 @@ function verCliente(id) {
   const c = S.cli.get(id); if (!c) return;
   const r = resumoCliente(c);
   abrir(`
-  <div class="dlg-cab"><h2>${esc(c.nome)}</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
+  <div class="dlg-cab"><h2 class="com-av">${avatar(c)}<span>${esc(c.nome)}</span></h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
   <div class="dados">
     ${c.documento ? `<div><span>CPF/CNPJ</span>${esc(c.documento)}</div>` : ''}
     ${c.telefone ? `<div><span>Telefone</span><a class="link" href="tel:${soDigitos(c.telefone)}">${esc(c.telefone)}</a> · <a class="link" target="_blank" rel="noopener" href="${whatsapp(c.telefone)}">WhatsApp</a></div>` : ''}
@@ -485,8 +604,8 @@ async function carregarDocs(clienteId) {
   if ($('#docs-cli')?.dataset.cliente !== clienteId) return;
   S.docs = new Map(docs.map(d => [d.id, d]));
   el.innerHTML = docs.length ? `<div class="lista">${docs.map(d => `<div class="item">
-      <span class="item-pr doc"><span class="doc-ic">${icone(/^image\//.test(d.tipo) ? 'imagem' : 'documento')}</span>
-        <span><span class="item-tit">${esc(d.nome)}</span><span class="item-sub">${tamanho(Number(d.tamanho) || 0)} · ${new Date(d.criado_em).toLocaleDateString('pt-BR')}</span></span></span>
+      <span class="av av-ic" aria-hidden="true">${icone(/^image\//.test(d.tipo) ? 'imagem' : 'documento')}</span>
+      <span class="item-pr"><span class="item-tit">${esc(d.nome)}</span><span class="item-sub">${tamanho(Number(d.tamanho) || 0)} · ${new Date(d.criado_em).toLocaleDateString('pt-BR')}</span></span>
       <span class="item-ac"><button class="btn peq sec" data-a="doc-abrir" data-id="${d.id}">Abrir</button>
         ${leitura() ? '' : `<button class="btn peq perigo" data-a="doc-excluir" data-id="${d.id}">Excluir</button>`}</span>
     </div>`).join('')}</div>` : '<p class="vazio-p">Nenhum documento deste cliente.</p>';
@@ -511,10 +630,11 @@ function listaAportes(aps) {
   if (!aps.length) return '';
   return `<div class="lista">${aps.map(a => {
     const r = resumoAporte(a); const c = S.cli.get(a.cliente_id);
-    const st = r.quitado ? '<span class="tag recebida">Quitado</span>'
-      : r.atrasadas.length ? `<span class="tag atrasada">${r.atrasadas.length} em atraso</span>`
-      : r.proxima ? `<span class="tag cinza">próx. ${dataCurta(r.proxima.vencimento)}</span>` : '';
+    const st = r.quitado ? pill('verde', 'Quitado')
+      : r.atrasadas.length ? pill('vermelha', `${r.atrasadas.length} em atraso`)
+      : r.proxima ? pill('', `próx. ${dataCurta(r.proxima.vencimento)}`) : '';
     return `<button class="item" data-a="ap-ver" data-id="${a.id}">
+      ${avatar(c)}
       <span class="item-pr"><span class="item-tit">${esc(c?.nome || '?')} · ${moeda(a.valor)}</span>
         <span class="item-sub">${dataBR(a.data_aporte)} · ${fmtTaxa(a)} · ${C.MODALIDADES_CURTAS[a.modalidade]} · ${r.pagas}/${r.ps.length} recebidas</span></span>
       <span class="item-val"><b>${moeda(r.aReceber)}</b>${st}</span>
@@ -664,7 +784,7 @@ function previaAporte(c) {
         <span class="parc-n">${p.num}</span>
         <input type="date" value="${p.vencimento}" data-in="parc" data-i="${i}" data-k="vencimento" aria-label="Vencimento da parcela ${p.num}">
         <input inputmode="decimal" value="${C.num(p.valor)}" data-in="parc" data-i="${i}" data-k="valor" aria-label="Valor da parcela ${p.num}">
-        ${p.recebido_em ? '<span class="tag recebida">recebida</span>' : ''}
+        ${p.recebido_em ? pill('verde', 'Pago') : ''}
       </div>`).join('')}</div>`;
 }
 
@@ -673,7 +793,7 @@ function viewMais() {
   const p = S.perfil; const conta = p.conta;
   const d = conta ? C.diffDias(hoje(), conta.assinatura_ate) : 0;
   return `
-  <h1 class="tit">Mais</h1>
+  <div class="tit-linha"><h1 class="tit">Configurações</h1><button class="btn sec peq so-movel" data-a="ajuda">${icone('ajuda')}Ajuda</button></div>
   <section class="painel">
     <h2>Conta</h2>
     <div class="dados">
@@ -731,8 +851,9 @@ async function carregarPessoas() {
   const url = location.origin + location.pathname;
   el.innerHTML = `<h2>Pessoas com acesso</h2>
     <div class="lista">${ms.map(m => `<div class="item">
+      ${avatar({ id: m.email, nome: m.nome || m.email })}
       <span class="item-pr"><span class="item-tit">${esc(m.nome || m.email)}</span><span class="item-sub">${esc(m.email)} · ${m.papel}</span></span>
-      ${ehDono() && m.papel !== 'dono' && !leitura() ? `<button class="btn peq perigo" data-a="membro-tirar" data-email="${esc(m.email)}">Tirar</button>` : ''}
+      ${ehDono() && m.papel !== 'dono' && !leitura() ? `<span class="item-ac"><button class="btn peq perigo" data-a="membro-tirar" data-email="${esc(m.email)}">Tirar</button></span>` : ''}
     </div>`).join('')}</div>
     ${ehDono() && !leitura() ? `
     <form data-f="membro" class="form linha">
@@ -789,7 +910,7 @@ async function posAssinatura() {
   el.innerHTML = `<h2>Pagamentos</h2>${ps.length ? `<div class="lista">${ps.map(p => `<div class="item">
     <span class="item-pr"><span class="item-tit">${moeda(Number(p.valor))} · ${p.meses} ${p.meses == 1 ? 'mês' : 'meses'}</span>
     <span class="item-sub">${new Date(p.criado_em).toLocaleDateString('pt-BR')} · código ${esc(p.txid)}</span></span>
-    <span class="tag ${p.status === 'confirmado' ? 'recebida' : p.status === 'recusado' ? 'atrasada' : 'hoje'}">${ROT[p.status]}</span></div>`).join('')}</div>`
+    <span class="item-val">${pill(p.status === 'confirmado' ? 'verde' : p.status === 'recusado' ? 'vermelha' : '', ROT[p.status])}</span></div>`).join('')}</div>`
     : '<p class="dica">Nenhum pagamento ainda.</p>'}`;
 }
 
@@ -850,7 +971,7 @@ async function posAdmin() {
       <button class="btn peq perigo" data-a="pag-nao" data-id="${p.id}">Não localizei</button></span></div>`).join('')}</div>` : '<p class="dica">Nada aguardando.</p>'}`;
   $('#adm-contas').innerHTML = `<h2>Contas</h2><div class="lista">${contas.map(c => {
     const d = C.diffDias(h, c.assinatura_ate);
-    const tag = d < 0 ? `<span class="tag atrasada">vencida ${dataCurta(c.assinatura_ate)}</span>` : d <= 5 ? `<span class="tag hoje">vence ${dataCurta(c.assinatura_ate)}</span>` : `<span class="tag recebida">até ${dataBR(c.assinatura_ate)}</span>`;
+    const tag = d < 0 ? pill('vermelha', `vencida ${dataCurta(c.assinatura_ate)}`) : d <= 5 ? pill('', `vence ${dataCurta(c.assinatura_ate)}`) : pill('verde', `até ${dataBR(c.assinatura_ate)}`);
     return `<div class="item">
       <span class="item-pr"><span class="item-tit">${esc(c.nome)}${pagantes.has(c.id) ? '' : ' <small>(teste)</small>'}</span>
       <span class="item-sub">${esc(c.dono || '')} · ${c.membros} pessoa${c.membros == 1 ? '' : 's'} · desde ${new Date(c.criado_em).toLocaleDateString('pt-BR')}</span></span>
@@ -861,9 +982,9 @@ async function posAdmin() {
 
 function renderAdminSolto() {
   document.body.className = 'dentro';
-  $('#app').innerHTML = `<header class="topo"><div class="topo-nome">${MARCA_ICONE}<b>Administração</b></div>
+  $('#app').innerHTML = `<div class="solto"><header class="topo"><div class="topo-nome">${MARCA_ICONE}<b>Administração</b></div>
     <button class="btn peq sec" data-a="nav" data-v="inicio">Voltar</button></header>
-    <main class="conteudo">${viewAdmin()}</main>`;
+    <main class="conteudo">${viewAdmin()}</main></div>`;
   posAdmin().catch(e => toast(e.message, 'erro'));
 }
 
@@ -934,10 +1055,12 @@ const ACOES = {
   'sair-demo': async (d, el, ev) => { ev.preventDefault(); localStorage.removeItem(CHAVE_DEMO); location.href = location.pathname; },
   graf: d => { S.grafico = d.m; render(); },
   'agenda-ir': d => {
-    S.f = { ...S.f, periodo: d.periodo, de: d.de || '', ate: d.ate || '', situacao: d.situacao || 'pendente', cliente: '' };
+    S.f = { ...S.f, periodo: d.periodo, de: d.de || '', ate: d.ate || '', situacao: d.situacao || 'pendente', cliente: d.cliente || '' };
     irPara('agenda');
   },
   receber: d => abrirRecebimento(d.id),
+  'rec-lista': () => abrirListaReceber(),
+  ajuda: () => abrirAjuda(),
   'rec-modo': (d, el) => {
     const f = el.closest('form'); f.elements.modo.value = d.m;
     f.querySelectorAll('[data-a="rec-modo"]').forEach(b => b.classList.toggle('on', b === el));
@@ -1008,8 +1131,8 @@ const ACOES = {
   acordo: d => {
     const a = S.ap.get(d.id); if (!a) return;
     abrir(`<div class="dlg-cab"><h2>Acordo em PDF</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
-      <p>Gera o instrumento particular de acordo com as condições, a tabela de parcelas e os termos definidos em Mais › Dados do acordo.</p>
-      ${S.perfil.conta?.credor_nome ? '' : '<p class="nota">' + icone('alerta') + '<span>Os dados do credor ainda não foram preenchidos (Mais › Dados do acordo). O PDF sai com espaços em branco para completar à mão.</span></p>'}
+      <p>Gera o instrumento particular de acordo com as condições, a tabela de parcelas e os termos definidos em Configurações › Dados do acordo.</p>
+      ${S.perfil.conta?.credor_nome ? '' : '<p class="nota">' + icone('alerta') + '<span>Os dados do credor ainda não foram preenchidos (Configurações › Dados do acordo). O PDF sai com espaços em branco para completar à mão.</span></p>'}
       <div class="acoes">
         <button class="btn pri" data-a="acordo-gerar" data-id="${a.id}">${icone('baixar')}Baixar PDF</button>
         ${leitura() ? '' : `<button class="btn sec" data-a="acordo-gerar" data-id="${a.id}" data-guardar="1">Baixar e guardar nos documentos do cliente</button>`}
@@ -1037,6 +1160,41 @@ const ACOES = {
       <div class="acoes"><button class="btn pri">Gravar</button><button type="button" class="btn sec" data-a="fechar">Cancelar</button></div>
     </form>`),
 };
+
+// "Registrar recebimento" do Início: primeiro a lista de parcelas em aberto, depois o modal de receber.
+function listaReceber(busca = '') {
+  const b = norm(busca);
+  const ps = pendentes().filter(p => !b || norm(clienteDe(p)?.nome).includes(b)).sort((x, y) => x.vencimento.localeCompare(y.vencimento));
+  if (!ps.length) return `<p class="vazio-p">${b ? 'Nenhuma parcela em aberto para esta busca.' : 'Nenhuma parcela em aberto.'}</p>`;
+  return listaAgrupada(ps, { limite: 60 }) + (ps.length > 60 ? `<p class="dica">Mostrando as 60 primeiras de ${ps.length}. Busque pelo nome do cliente para achar as outras.</p>` : '');
+}
+
+function abrirListaReceber() {
+  abrir(`<div class="dlg-cab"><h2>Registrar recebimento</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
+    <p class="dica">Escolha a parcela que você recebeu. Em seguida, confira o valor e confirme.</p>
+    <input class="busca" type="search" placeholder="Buscar pelo cliente" data-in="busca-rec" aria-label="Buscar pelo cliente">
+    <div id="rec-lista">${listaReceber()}</div>`);
+}
+
+function abrirAjuda() {
+  const contato = S.perfil?.config?.contato || S.publica?.contato;
+  abrir(`<div class="dlg-cab"><h2>Ajuda</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
+  <div class="ajuda">
+    <h3>Primeiros passos</h3>
+    <p>Cadastre o cliente em <b>Clientes</b> e depois o crédito em <b>+ Novo crédito</b>, com o valor, a taxa e a forma de pagamento. O CredFlux gera as parcelas, e dá para ajustar a data e o valor de cada uma antes de gravar. Vencimento no domingo passa para a segunda.</p>
+    <h3>Receber uma parcela</h3>
+    <p>Use o botão de confirmar (✓) ao lado da parcela ou <b>Registrar recebimento</b>, no Início. Dá para receber a parcela inteira, só os juros ou outro valor; antes de confirmar, o sistema mostra como ficam o saldo e as próximas parcelas. O dinheiro paga primeiro a multa, depois os juros e por último o capital. Para corrigir, use <b>Desfazer</b> na Agenda ou no crédito.</p>
+    <h3>Atrasos e multa</h3>
+    <p>A multa é por crédito e conta desde a parcela mais antiga em aberto: na taxa fixa, os juros do contrato ÷ 30 por dia; nas outras formas, o saldo × a taxa mensal ÷ 30 por dia. Ela pode ser dispensada ao receber. <b>Cobrar</b>, no Início, abre o WhatsApp do cliente em atraso; com mais de um cliente, abre a Agenda nos atrasos.</p>
+    <h3>Agenda</h3>
+    <p>Filtre por período, cliente e situação, agrupe por dia ou por mês e baixe a planilha.</p>
+    <h3>Documentos e acordo</h3>
+    <p>Na ficha do cliente ficam contratos, recibos e fotos (PDF ou imagem). Em cada crédito, <b>Acordo em PDF</b> gera o acordo com as parcelas e os termos definidos em Configurações › Dados do acordo.</p>
+    <h3>Assinatura</h3>
+    <p>Em Configurações › Assinatura e pagamento, pague por Pix e toque em <b>Já paguei</b>. Com a assinatura vencida, a conta fica só para leitura até o pagamento ser conferido.</p>
+    ${contato ? `<h3>Contato</h3><p>${esc(contato)}</p>` : ''}
+  </div>`);
+}
 
 function abrirRecebimento(id) {
   const p = S.dados.parcelas.find(x => x.id === id); if (!p) return;
@@ -1245,6 +1403,7 @@ document.addEventListener('input', e => {
     const n = $('[data-in="busca-cli"]'); n.focus(); n.setSelectionRange(pos, pos);
     return;
   }
+  if (t.dataset.in === 'busca-rec') { $('#rec-lista').innerHTML = listaReceber(t.value); return; }
   if (t.dataset.in === 'parc') {
     const p = S.form.parcelas[+t.dataset.i];
     if (t.dataset.k === 'valor') { const v = C.parseNum(t.value); if (v >= 0) p.valor = r2(v); }
