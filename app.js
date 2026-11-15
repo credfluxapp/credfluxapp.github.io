@@ -83,6 +83,7 @@ const ICON = {
   alerta: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
   entrada: '<circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="m8 12 4 4 4-4"/>',
   lua: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  sair: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
   escudo: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
 };
@@ -296,6 +297,7 @@ function render() {
           ${itemNav('mais', 'ajustes', '<span class="nav-t so-largo">Configurações</span><span class="nav-t so-movel">Ajustes</span>')}
           <button class="nav-it nav-ajuda" data-a="ajuda">${icone('ajuda')}<span class="nav-t">Ajuda</span></button>
           <button class="nav-it nav-tema" data-a="tema-alternar"><span class="so-claro">${icone('lua')}<span class="nav-t">Modo escuro</span></span><span class="so-escuro">${icone('sol')}<span class="nav-t">Modo claro</span></span></button>
+          <button class="nav-it nav-sair" data-a="sair" title="${demo() ? 'Sair da demonstração' : 'Sair da conta'}">${icone('sair')}<span class="nav-t">Sair</span></button>
         </div>
       </nav>
       ${demo() ? '<div class="lateral-aviso"><p>Você está no modo demonstração. Os dados ficam só neste navegador.</p><a href="./" data-a="sair-demo">Criar conta de verdade →</a></div>' : ''}
@@ -816,7 +818,9 @@ function viewMais() {
   const p = S.perfil; const conta = p.conta;
   const d = conta ? C.diffDias(hoje(), conta.assinatura_ate) : 0;
   return `
-  <div class="tit-linha"><h1 class="tit">Configurações</h1><button class="btn sec peq so-movel" data-a="ajuda">${icone('ajuda')}Ajuda</button></div>
+  <div class="tit-linha"><h1 class="tit">Configurações</h1><span class="tit-acoes so-movel">
+    <button class="btn sec peq" data-a="ajuda">${icone('ajuda')}Ajuda</button>
+    <button class="btn perigo peq" data-a="sair">${icone('sair')}Sair</button></span></div>
   <section class="painel">
     <h2>Conta</h2>
     <div class="dados">

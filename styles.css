@@ -366,7 +366,7 @@ input:disabled, textarea:disabled { background-color: var(--surface-2); color: v
   background: var(--vidro-forte); -webkit-backdrop-filter: var(--desfoque); backdrop-filter: var(--desfoque);
   border-top: 1px solid var(--line);
 }
-.lateral-marca, .nav-rot, .lateral-aviso, .nav-it.nav-ajuda, .nav-it.nav-tema { display: none; }
+.lateral-marca, .nav-rot, .lateral-aviso, .nav-it.nav-ajuda, .nav-it.nav-tema, .nav-it.nav-sair { display: none; }
 .nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); height: calc(var(--nav-h) - 2 * var(--sp-6)); }
 .nav-grupo { display: contents; }
 .nav-it {
@@ -539,6 +539,7 @@ button.item-pr:hover .item-tit, button.item:hover .item-tit { text-decoration: u
 /* 9. Telas ---------------------------------------------------------------------- */
 .tit-linha { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-8); margin-bottom: var(--sp-24); }
 .tit-linha .tit { margin: 0; }
+.tit-acoes { display: flex; flex-wrap: wrap; gap: var(--sp-8); }
 .vazio { margin-bottom: var(--sp-24); padding: var(--sp-24); border: 1px dashed var(--line-hover); border-radius: var(--r-card); background: var(--surface-2); }
 .vazio p { color: var(--muted); }
 .vazio-p { padding: var(--sp-36) var(--sp-16); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); color: var(--muted); text-align: center; }
@@ -730,7 +731,8 @@ body.fora #toasts { bottom: calc(var(--sp-24) + env(safe-area-inset-bottom)); }
   .nav-rot { display: block; margin: 0; padding: 0 0 var(--sp-8) var(--sp-15); font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
   .nav-it { flex-direction: row; justify-content: flex-start; gap: var(--sp-12); margin: 0; padding: var(--sp-14) var(--sp-15); font-size: 14px; font-weight: 500; text-align: left; }
   .nav-it svg { display: block; width: 20px; height: 20px; }
-  .nav-it.nav-ajuda, .nav-it.nav-tema { display: flex; }
+  .nav-it.nav-ajuda, .nav-it.nav-tema, .nav-it.nav-sair { display: flex; }
+  .nav-it.nav-sair:hover { background-color: var(--danger-bg); color: var(--danger-text); }
   .nav-cont { position: static; height: auto; min-width: 0; margin-left: auto; padding: var(--sp-2) var(--sp-8); font-size: 12px; line-height: normal; }
   .lateral-aviso {
     display: flex; flex-direction: column; gap: var(--sp-8); margin-top: auto; padding: var(--sp-16);

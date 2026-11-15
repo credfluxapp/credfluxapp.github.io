@@ -94,7 +94,7 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     ok(await avaliar(`['--bg','--surface','--ink','--muted','--line','--brand-dark','--brand-dark-2','--brand','--brand-text','--danger'].map(v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim().toUpperCase()).join(' ')`)
       === '#FFFFFF #FFFFFF #1B212D #646F82 #F0F1F3 #1B212D #363A3F #C8EE44 #1E7F5A #C9302C', 'Tokens de cor no :root');
     ok(await estilo('.lateral', 'position') === 'fixed' && await avaliar(`Math.abs(document.querySelector('.lateral').getBoundingClientRect().bottom - innerHeight) < 1`), 'Menu fixo embaixo no celular');
-    ok(await avaliar(`document.querySelectorAll('.lateral .nav-it').length === 7 && [...document.querySelectorAll('.lateral .nav-it')].filter(e=>e.getClientRects().length).length === 5`), 'Menu de baixo com 5 itens (Ajuda e tema ficam em Ajustes)');
+    ok(await avaliar(`document.querySelectorAll('.lateral .nav-it').length === 8 && [...document.querySelectorAll('.lateral .nav-it')].filter(e=>e.getClientRects().length).length === 5`), 'Menu de baixo com 5 itens (Ajuda, tema e Sair ficam em Ajustes)');
     ok(await avaliar(`getComputedStyle(document.querySelector('.destaques')).gridTemplateColumns.split(' ').length === 1 && getComputedStyle(document.querySelector('.janelas')).gridTemplateColumns.split(' ').length === 1`), 'Cartões em uma coluna no celular');
     const nAtraso = await atrasosNoBanco();
     const cont = await avaliar(`document.querySelector('[data-v="agenda"] .nav-cont')?.firstChild?.textContent || ''`);
@@ -254,6 +254,7 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     ok(lat.w === 248 && lat.x === 0 && lat.cor === 'rgb(250, 250, 250)', `Barra lateral clara de 248px (${lat.w}px, ${lat.cor})`);
     ok(lat.on === 'rgb(200, 238, 68)' && lat.logo === 'rgb(200, 238, 68)', 'Item ativo e logo em verde-limão');
     ok(lat.rot === 'Menu/Conta' && /Início, Agenda, Clientes, Créditos, Configurações, Ajuda/.test(lat.itens), `Menu e Conta na barra lateral (${lat.itens})`);
+    ok(/Sair$/.test(lat.itens) && await visivel('.lateral [data-a="sair"]'), 'Sair à mão na barra lateral');
     ok(await visivel('.lateral-aviso') && /Criar conta de verdade/.test(await avaliar(`document.querySelector('.lateral-aviso').textContent`)), 'Aviso da demonstração no rodapé da barra lateral');
     ok(await avaliar(`(()=>{const t=[...document.querySelectorAll('.destaque')].map(e=>Math.round(e.getBoundingClientRect().top)); return t.length===3 && t.every(v=>v===t[0])})()`), 'Três destaques lado a lado');
     ok(await avaliar(`(()=>{const p=[...document.querySelectorAll('.paineis > .painel')].map(e=>e.getBoundingClientRect()); return p.length===2 && Math.round(p[0].top)===Math.round(p[1].top) && p[0].right < p[1].left})()`), 'Gráfico e Próximos recebimentos lado a lado');
@@ -353,6 +354,13 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await clicar('[data-a="cli-novo"]'); await espera(300);
     await foto('m13_novo_cliente', false);
     await clicar('#dlg [data-a="fechar"]');
+
+    // Sair no topo de Configurações (celular): na demonstração, volta à tela inicial
+    await clicar('[data-a="nav"][data-v="mais"]'); await espera(300);
+    ok(await visivel('.tit-linha [data-a="sair"]'), 'Sair no topo de Configurações no celular');
+    await foto('m16_configuracoes_sair', false);
+    await clicar('.tit-linha [data-a="sair"]'); await espera(2500);
+    ok(await avaliar(`!!document.querySelector('form[data-f="acesso"]') && !localStorage.credflux_demo_v2`), 'Sair encerra a demonstração e volta à tela de acesso');
 
     // Tela inicial (acesso), celular e computador
     await cdp('Page.navigate', { url: BASE }); await espera(2500);
