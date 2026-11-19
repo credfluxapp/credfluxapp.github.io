@@ -1,5 +1,6 @@
 import { abrirStore, configurado, CHAVE_DEMO } from './store.js';
 import { gerarAcordoPDF, gerarReciboPDF, prepararPDF, valorPorExtenso, TERMOS_PADRAO } from './acordo.js';
+import { gerarBackupXLSX } from './planilha.js';
 import * as C from './calc.js';
 import { pixCopiaECola } from './pix.js';
 
@@ -29,6 +30,14 @@ const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 // Valor curto para o gráfico: 4,2k; 1,5M; "-" quando não há nada.
 const abrev = v => (!v ? '-' : v >= 1e6 ? `${C.num(v / 1e6, 1)}M` : v >= 1000 ? `${C.num(v / 1000, 1)}k` : C.num(v, 0));
 
+// Preferências guardadas neste aparelho (sem armazenamento, valem só nesta visita).
+const lerLocal = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const gravarLocal = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
+const CHAVE_ORDEM_CLI = 'credflux_ordem_clientes';
+const CHAVE_AVISOS = 'credflux_avisos';
+const prefsAviso = () => { try { return { detalhes: true, abrir: true, ...JSON.parse(lerLocal(CHAVE_AVISOS) || '{}') }; } catch { return { detalhes: true, abrir: true }; } };
+const gravarPrefsAviso = p => gravarLocal(CHAVE_AVISOS, JSON.stringify({ ...prefsAviso(), ...p }));
+
 // Tema: automático (segue o sistema), claro ou escuro. O index.html já marca data-tema antes da primeira pintura.
 const CHAVE_TEMA = 'credflux_tema';
 const temaPref = () => { try { return localStorage.getItem(CHAVE_TEMA) || 'auto'; } catch { return 'auto'; } };
@@ -46,12 +55,18 @@ function escolherTema(pref) {
 temaSistema?.addEventListener?.('change', () => aplicarTema());
 aplicarTema();
 
+// Com uma janela aberta, a mensagem vai para dentro dela (senão fica atrás do fundo desfocado);
+// ao fechar a janela, as mensagens que ainda estão na tela passam para fora.
+const caixaToasts = () => (document.getElementById('dlg')?.open && $('#dlg-toasts')) || $('#toasts');
 function toast(msg, tipo = '') {
   const t = document.createElement('div');
   t.className = 'toast ' + tipo; t.textContent = msg;
-  $('#toasts').appendChild(t);
+  caixaToasts().appendChild(t);
   setTimeout(() => t.remove(), tipo === 'erro' ? 6000 : 3000);
 }
+document.getElementById('dlg')?.addEventListener('close', () => {
+  for (const t of [...($('#dlg-toasts')?.children || [])]) $('#toasts').appendChild(t);
+});
 
 const dlg = () => $('#dlg');
 function abrir(html, larga = false) {
@@ -86,6 +101,10 @@ const ICON = {
   recibo: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/>',
   desfazer: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>',
   celular: '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
+  chave: '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>',
+  sino: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+  planilha: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/>',
+  conversa: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   dinheiro: '<rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
   sair: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
   escudo: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
@@ -118,6 +137,7 @@ const S = {
   view: 'inicio', grafico: 'meses',
   f: { periodo: 'p30', de: '', ate: '', cliente: '', situacao: 'pendente', agrupar: 'dia' },
   fCli: '', fAp: { status: 'ativos', cliente: '', busca: '' },
+  oCli: ['nome', 'venc', 'valor'].includes(lerLocal(CHAVE_ORDEM_CLI)) ? lerLocal(CHAVE_ORDEM_CLI) : 'nome',
   form: null,
 };
 const demo = () => S.store?.modo === 'demo';
@@ -141,7 +161,7 @@ function indexar() {
 }
 
 async function recarregar() {
-  S.dados = await S.store.carregar();
+  S.dados = await S.store.carregar(); S.carregadoEm = Date.now();
   indexar();
   render();
 }
@@ -178,8 +198,10 @@ function resumoCliente(c) {
     investido: soma(aps, a => a.valor),
     aReceber: soma(rs, r => r.aReceber),
     capital: soma(rs, r => r.capital),
+    recebido: soma(rs, r => r.recebido),
     atraso: soma(rs, r => soma(r.atrasadas, p => p.valor)),
     mora: soma(rs, r => r.mora),
+    proximo: rs.flatMap(r => r.pend.map(p => p.vencimento)).sort()[0] || null,
   };
 }
 
@@ -242,11 +264,12 @@ const RECURSOS_ACESSO = () => [
 
 function telaAcesso(modo = 'entrar', aviso = '') {
   if (modo === 'confirmar') return telaConfirmar(aviso);
+  if (modo === 'redefinir') return telaRedefinir(aviso);
   const pub = S.publica || {};
   const preco = pub.preco_mensal ? moeda(Number(pub.preco_mensal)) : '';
   const abas = [['entrar', 'Entrar'], ['criar', 'Criar acesso'], ['esqueci', 'Esqueci a senha']]
     .map(([m, t]) => `<button type="button" class="aba ${m === modo ? 'on' : ''}" data-a="acesso" data-m="${m}">${t}</button>`).join('');
-  const botao = { entrar: 'Entrar', criar: 'Criar acesso', esqueci: 'Enviar link para nova senha' }[modo];
+  const botao = { entrar: 'Entrar', criar: 'Criar acesso', esqueci: 'Enviar código' }[modo];
   const recursos = RECURSOS_ACESSO();
   molduraFora(`
     <div class="ac-topo"><a href="?demo" class="btn sec peq">Ver demonstração</a></div>
@@ -259,23 +282,56 @@ function telaAcesso(modo = 'entrar', aviso = '') {
           <label>E-mail<input name="email" type="email" autocomplete="email" required autofocus></label>
           ${modo !== 'esqueci' ? `<label>Senha<input name="senha" type="password" minlength="6" autocomplete="${modo === 'criar' ? 'new-password' : 'current-password'}" required></label>` : ''}
           ${modo === 'criar' ? '<p class="dica">Use o e-mail que vai acessar o sistema. Você vai receber nele um código de confirmação do CredFlux. Se alguém incluiu você numa conta, use o mesmo e-mail que essa pessoa cadastrou.</p>' : ''}
+          ${modo === 'esqueci' ? '<p class="dica">Vamos mandar um código de 6 dígitos para o seu e-mail. Com ele, você cria a senha nova aqui mesmo.</p>' : ''}
           <button class="btn pri largo">${botao}</button>
         </form>
-        ${modo !== 'esqueci' ? '<p class="dica centro">Já recebeu o código? <button type="button" class="link" data-a="acesso" data-m="confirmar">Confirmar e-mail</button></p>' : ''}
+        ${modo !== 'esqueci' ? '<p class="dica centro">Já recebeu o código? <button type="button" class="link" data-a="acesso" data-m="confirmar">Confirmar e-mail</button></p>'
+          : '<p class="dica centro">Já tem o código? <button type="button" class="link" data-a="acesso" data-m="redefinir">Criar a nova senha</button></p>'}
       </div>
       ${preco ? `<div class="preco"><div><b>${preco}</b><span>por mês, pago por Pix</span></div>${pub.dias_teste ? pill('verde', `${pub.dias_teste} dias de teste sem custo`) : ''}</div>` : ''}
       <p class="centro dica">Quer ver antes? <a href="?demo" class="link">Abrir a demonstração com dados de exemplo</a></p>
     </div>`, recursos);
 }
 
-function telaNovaSenha() {
+// Link de um e-mail antigo (com botão) ou código já conferido: falta só a senha nova.
+function telaNovaSenha(aviso = '') {
   molduraFora(`<div class="ac-caixa"><div class="cartao">
     <h2>Nova senha</h2>
+    ${aviso ? `<p class="aviso">${esc(aviso)}</p>` : ''}
     <form data-f="nova-senha">
       <label>Nova senha<input name="senha" type="password" minlength="6" autocomplete="new-password" required autofocus></label>
+      <label>Repita a nova senha<input name="senha2" type="password" minlength="6" autocomplete="new-password" required></label>
       <button class="btn pri largo">Gravar senha</button>
     </form>
   </div></div>`);
+}
+
+// Esqueci a senha: o código chega no e-mail (credfluxapp@gmail.com) e a senha nova é criada aqui mesmo,
+// sem link nem página de fora.
+function telaRedefinir(aviso = '') {
+  const email = S.emailRedefinir || '';
+  molduraFora(`
+    <div class="ac-topo"><a href="?demo" class="btn sec peq">Ver demonstração</a></div>
+    <div class="ac-caixa">
+      <div class="cartao">
+        <h2>Criar nova senha</h2>
+        ${aviso ? `<p class="aviso">${esc(aviso)}</p>` : ''}
+        <p class="dica">${email ? `Se <b>${esc(email)}</b> tiver acesso ao CredFlux, enviamos para ele um código de 6 dígitos.` : 'Digite o e-mail e o código de 6 dígitos que chegou nele.'}
+          O e-mail vem do CredFlux (credfluxapp@gmail.com); se não aparecer em alguns minutos, confira o spam.</p>
+        <form data-f="redefinir">
+          <label>E-mail<input name="email" type="email" autocomplete="username" required value="${esc(email)}" ${email ? '' : 'autofocus'}></label>
+          <label>Código do e-mail<input name="codigo" class="codigo" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" maxlength="10" required ${email ? 'autofocus' : ''} placeholder="000000"></label>
+          <label>Nova senha<input name="senha" type="password" minlength="6" autocomplete="new-password" required></label>
+          <label>Repita a nova senha<input name="senha2" type="password" minlength="6" autocomplete="new-password" required></label>
+          <button class="btn pri largo">Gravar nova senha e entrar</button>
+        </form>
+        <div class="ac-links">
+          <button type="button" class="link" data-a="reenviar-codigo" data-tipo="senha">Reenviar código</button>
+          <button type="button" class="link" data-a="acesso" data-m="entrar">Voltar para Entrar</button>
+        </div>
+        <p class="dica">Foi incluído na conta de outra pessoa e ainda não criou o seu acesso? Nesse caso o código não chega: use <button type="button" class="link" data-a="acesso" data-m="criar">Criar acesso</button> com o mesmo e-mail.</p>
+      </div>
+    </div>`, RECURSOS_ACESSO());
 }
 
 function telaCriarConta() {
@@ -599,20 +655,33 @@ function viewAgenda() {
 }
 
 // Clientes ------------------------------------------------------------------------
+// Ordem da lista: por nome, pelo vencimento em aberto mais próximo (atrasados primeiro, sem parcela no fim)
+// ou pelo valor a receber. A escolha fica guardada neste aparelho.
+const ORDENS_CLI = [['nome', 'Nome'], ['venc', 'Vencimento'], ['valor', 'A receber']];
 function viewClientes() {
-  const busca = norm(S.fCli);
-  const cs = S.dados.clientes.filter(c => !busca || norm(`${c.nome} ${c.documento || ''} ${c.telefone || ''}`).includes(busca));
+  const busca = norm(S.fCli); const h = hoje();
+  const linhas = S.dados.clientes.filter(c => !busca || norm(`${c.nome} ${c.documento || ''} ${c.telefone || ''}`).includes(busca))
+    .map(c => ({ c, r: resumoCliente(c) }));
+  const porNome = (x, y) => x.c.nome.localeCompare(y.c.nome, 'pt-BR');
+  if (S.oCli === 'venc') linhas.sort((x, y) => (x.r.proximo || '9999').localeCompare(y.r.proximo || '9999') || porNome(x, y));
+  else if (S.oCli === 'valor') linhas.sort((x, y) => y.r.aReceber - x.r.aReceber || porNome(x, y));
   return `
   <div class="tit-linha"><h1 class="tit">Clientes</h1>${leitura() ? '' : '<button class="btn pri" data-a="cli-novo">+ Cliente</button>'}</div>
-  <input class="busca" type="search" placeholder="Buscar por nome, documento ou telefone" value="${esc(S.fCli)}" data-in="busca-cli" aria-label="Buscar cliente">
-  <div class="lista" id="lista-cli">${cs.map(c => {
-    const r = resumoCliente(c);
+  <div class="cli-barra">
+    <input class="busca" type="search" placeholder="Buscar por nome, documento ou telefone" value="${esc(S.fCli)}" data-in="busca-cli" aria-label="Buscar cliente">
+    <div class="cli-ordem"><span>Ordenar por</span><div class="seg" role="group" aria-label="Ordenar clientes">${ORDENS_CLI
+      .map(([o, t]) => `<button class="${S.oCli === o ? 'on' : ''}" data-a="ordem-cli" data-o="${o}" aria-pressed="${S.oCli === o}">${t}</button>`).join('')}</div></div>
+  </div>
+  <div class="lista" id="lista-cli">${linhas.map(({ c, r }) => {
     const st = r.atraso ? pill('vermelha', `${moeda(r.atraso)} em atraso`)
-      : r.aReceber ? pill('', 'A receber') : r.aps.length ? pill('verde', 'Quitado') : pill('', 'Sem crédito');
+      : r.proximo === h ? pill('amarela', 'Vence hoje')
+      : r.proximo ? pill('', `Próx. ${dataCurta(r.proximo)}`)
+      : r.aps.length ? pill('verde', 'Quitado') : pill('', 'Sem crédito');
+    const sub = [r.atraso ? `atraso desde ${dataCurta(r.proximo)}` : '', plural(r.ativos, 'crédito ativo', 'créditos ativos'), esc(c.telefone || '')].filter(Boolean).join(' · ');
     return `<button class="item" data-a="cli-ver" data-id="${c.id}">
       ${avatar(c)}
       <span class="item-pr"><span class="item-tit">${esc(c.nome)}</span>
-        <span class="item-sub">${plural(r.ativos, 'crédito ativo', 'créditos ativos')}${c.telefone ? ' · ' + esc(c.telefone) : ''}</span></span>
+        <span class="item-sub">${sub}</span></span>
       <span class="item-val"><b>${moeda(r.aReceber)}</b>${st}</span>
     </button>`;
   }).join('') || '<p class="vazio-p">Nenhum cliente.</p>'}</div>`;
@@ -864,6 +933,7 @@ function viewMais() {
     </div>
     <div class="acoes">
       <button class="btn pri" data-a="nav" data-v="assinatura">Assinatura e pagamento</button>
+      <button class="btn sec" data-a="senha">${icone('chave')}Alterar senha</button>
       ${p.admin ? '<button class="btn sec" data-a="nav" data-v="admin">Painel do administrador</button>' : ''}
     </div>
   </section>
@@ -873,13 +943,15 @@ function viewMais() {
     <div class="seg" role="group" aria-label="Tema">${[['auto', 'Automático'], ['claro', 'Claro'], ['escuro', 'Escuro']]
       .map(([t, r]) => `<button class="${temaPref() === t ? 'on' : ''}" data-a="tema" data-t="${t}">${r}</button>`).join('')}</div>
   </section>
+  <section class="painel" id="painel-avisos"><h2>Notificações no celular</h2><p class="dica">Carregando…</p></section>
   <section class="painel" id="painel-pessoas"><h2>Pessoas com acesso</h2><p class="dica">Carregando…</p></section>
   ${painelAcordo()}
   <section class="painel">
-    <h2>Exportar</h2>
-    <p class="dica">Cópia dos seus dados para guardar ou abrir no Excel.</p>
+    <h2>Backup e exportação</h2>
+    <p class="dica">A planilha do Excel tem uma aba de resumo e uma aba para cada cliente, com os créditos e todas as parcelas. Guarde uma cópia de vez em quando.</p>
     <div class="acoes">
-      <button class="btn sec" data-a="csv-tudo">Planilha de parcelas</button>
+      <button class="btn pri" data-a="backup-xlsx">${icone('planilha')}Backup em planilha (Excel)</button>
+      <button class="btn sec" data-a="csv-tudo">Parcelas em CSV</button>
       <button class="btn sec" data-a="json-tudo">Cópia completa (JSON)</button>
     </div>
   </section>
@@ -1056,7 +1128,7 @@ function renderAdminSolto() {
 }
 
 const VIEWS = { inicio: viewInicio, agenda: viewAgenda, clientes: viewClientes, aportes: viewAportes, mais: viewMais, assinatura: viewAssinatura, admin: viewAdmin };
-const POS = { mais: carregarPessoas, assinatura: posAssinatura, admin: posAdmin };
+const POS = { mais: () => Promise.all([carregarPessoas(), carregarAvisos()]), assinatura: posAssinatura, admin: posAdmin };
 
 function irPara(v) {
   S.view = v; history.replaceState(null, '', '#' + v);
@@ -1124,15 +1196,17 @@ async function montarRecibo(id) {
 }
 
 // No celular, o PDF abre direto para compartilhar (WhatsApp, e-mail...); no computador, baixa.
-async function entregarPDF(blob, nome, titulo) {
-  const arq = new File([blob], nome, { type: 'application/pdf' });
+async function entregarArquivo(blob, nome, titulo) {
+  const tipo = blob.type || 'application/octet-stream';
+  const arq = new File([blob], nome, { type: tipo });
   if (matchMedia('(max-width: 899.98px)').matches && navigator.canShare?.({ files: [arq] })) {
     try { await navigator.share({ files: [arq], title: titulo }); return 'compartilhado'; }
     catch (e) { if (e.name === 'AbortError') return 'cancelado'; }
   }
-  baixar(nome, blob, 'application/pdf');
+  baixar(nome, blob, tipo);
   return 'baixado';
 }
+const entregarPDF = (blob, nome, titulo) => entregarArquivo(blob.type ? blob : new Blob([blob], { type: 'application/pdf' }), nome, titulo);
 
 // Carrega o gerador de PDF em segundo plano, uma vez, para o clique no recibo ser rápido.
 function preparoPDF() {
@@ -1148,8 +1222,206 @@ function toastAcao(msg, rotulo, dados) {
   const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-acao'; b.textContent = rotulo;
   for (const [k, v] of Object.entries(dados)) b.dataset[k] = v;
   t.appendChild(b);
-  $('#toasts').appendChild(t);
+  caixaToasts().appendChild(t);
   setTimeout(() => t.remove(), 9000);
+}
+
+// Senha --------------------------------------------------------------------------------
+function formSenha() {
+  abrir(`
+  <div class="dlg-cab"><h2>Alterar senha</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
+  <form data-f="senha" class="form">
+    <input name="usuario" autocomplete="username" value="${esc(S.perfil.email)}" hidden>
+    <label>Senha atual<input name="atual" type="password" autocomplete="current-password" required autofocus></label>
+    <label>Nova senha<input name="nova" type="password" minlength="6" autocomplete="new-password" required></label>
+    <label>Repita a nova senha<input name="nova2" type="password" minlength="6" autocomplete="new-password" required></label>
+    <p class="dica">Use pelo menos 6 caracteres. Misturar letras, números e símbolos deixa a senha mais segura.</p>
+    <div class="acoes"><button class="btn pri">Gravar nova senha</button><button type="button" class="btn sec" data-a="fechar">Cancelar</button></div>
+  </form>
+  ${demo() ? '' : '<p class="dica">Não lembra a senha atual? <button type="button" class="link" data-a="senha-codigo">Receber um código no e-mail</button></p>'}`);
+}
+
+function formSenhaCodigo() {
+  abrir(`
+  <div class="dlg-cab"><h2>Alterar senha</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
+  <p class="dica">Enviamos um código de 6 dígitos para <b>${esc(S.perfil.email)}</b>. O e-mail vem do CredFlux (credfluxapp@gmail.com); se não aparecer, confira o spam.</p>
+  <form data-f="senha-codigo" class="form">
+    <input name="usuario" autocomplete="username" value="${esc(S.perfil.email)}" hidden>
+    <label>Código do e-mail<input name="codigo" class="codigo" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" maxlength="10" required autofocus placeholder="000000"></label>
+    <label>Nova senha<input name="nova" type="password" minlength="6" autocomplete="new-password" required></label>
+    <label>Repita a nova senha<input name="nova2" type="password" minlength="6" autocomplete="new-password" required></label>
+    <div class="acoes"><button class="btn pri">Gravar nova senha</button><button type="button" class="btn sec" data-a="fechar">Cancelar</button></div>
+  </form>`);
+}
+
+// Backup em planilha: os números saem dos mesmos resumos das telas ------------------------------
+function modeloBackup() {
+  const h = hoje();
+  const formaDe = a => [C.MODALIDADES_CURTAS[a.modalidade], ['unico', 'fixa'].includes(a.modalidade) ? '' : C.PERIODICIDADES[a.periodicidade]?.nome].filter(Boolean).join(' · ');
+  const clientes = S.dados.clientes.map(c => {
+    const r = resumoCliente(c);
+    const aps = r.aps.slice().sort((x, y) => x.data_aporte.localeCompare(y.data_aporte));
+    const creditos = [], parcelas = [];
+    aps.forEach((a, i) => {
+      const ra = resumoAporte(a); const rot = `Crédito ${i + 1}`;
+      creditos.push({ rot, data: a.data_aporte, valor: a.valor, taxa: fmtTaxa(a), pagas: `${ra.pagas}/${ra.ps.length}`,
+        recebido: ra.recebido, aReceber: ra.aReceber, atraso: soma(ra.atrasadas, p => p.valor),
+        proximo: ra.pend.map(p => p.vencimento).sort()[0] || null,
+        situacao: ra.quitado ? 'quitado' : ra.atrasadas.length ? 'atraso' : 'em_dia', forma: formaDe(a) });
+      for (const p of ra.ps) {
+        parcelas.push({ credito: rot, parcela: `${p.num}/${ra.ps.length}`, vencimento: p.vencimento, valor: p.valor,
+          juros: p.juros, amortizacao: p.amortizacao, situacao: C.statusParcela(p, h), recebidoEm: p.recebido_em,
+          valorRecebido: p.recebido_em ? p.valor_recebido : null, mora: p.mora || null, obs: p.obs || '' });
+      }
+    });
+    return { nome: c.nome, documento: c.documento || '', telefone: c.telefone || '', email: c.email || '', obs: c.obs || '',
+      ativos: r.ativos, emprestado: r.investido, recebido: r.recebido, aReceber: r.aReceber, atraso: r.atraso, mora: r.mora,
+      proximo: r.proximo, situacao: r.atraso ? 'atraso' : r.ativos ? 'em_dia' : aps.length ? 'quitado' : 'sem', creditos, parcelas };
+  });
+  const t = k => soma(clientes, c => c[k]);
+  const agora = new Date();
+  return {
+    conta: S.perfil.conta?.nome || 'CredFlux',
+    geradoEm: `${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+    totais: { ativos: clientes.reduce((n, c) => n + c.ativos, 0), emprestado: t('emprestado'), recebido: t('recebido'), aReceber: t('aReceber'), atraso: t('atraso'), mora: t('mora') },
+    clientes,
+  };
+}
+
+// Resumo do dia ------------------------------------------------------------------------------
+// Abre ao entrar no aplicativo (uma vez de manhã e outra a partir das 18h) e ao tocar numa notificação.
+const HORA_NOITE = 18;
+function abrirResumoDia(foco = 'hoje') {
+  const h = hoje(), am = addDias(h, 1);
+  const nomeDe = p => clienteDe(p)?.nome || '';
+  const pend = pendentes().slice().sort((a, b) => a.vencimento.localeCompare(b.vencimento) || nomeDe(a).localeCompare(nomeDe(b), 'pt-BR'));
+  const doDia = pend.filter(p => p.vencimento === h), atras = pend.filter(p => p.vencimento < h), amanha = pend.filter(p => p.vencimento === am);
+  const noite = foco === 'amanha' || new Date().getHours() >= HORA_NOITE;
+  // amanhã: um cliente por linha, com o total e o lembrete pelo WhatsApp
+  const porCliente = new Map();
+  for (const p of amanha) { const c = clienteDe(p); const k = c?.id || '?'; if (!porCliente.has(k)) porCliente.set(k, { c, ps: [] }); porCliente.get(k).ps.push(p); }
+  const linhaAmanha = ({ c, ps }) => {
+    const total = soma(ps, p => p.valor); const wa = whatsapp(c?.telefone);
+    const primeiro = String(c?.nome || '').trim().split(/\s+/)[0];
+    const msg = `Olá${primeiro ? `, ${primeiro}` : ''}! Passando para lembrar que amanhã, ${dataCurta(am)}, vence ${ps.length > 1 ? `o valor de ${moeda(total)} (${ps.length} parcelas)` : `a parcela de ${moeda(total)}`}. Obrigado!`;
+    return `<div class="item">
+      ${avatar(c)}
+      <span class="item-pr"><span class="item-tit">${esc(c?.nome || '?')}</span><span class="item-sub">${ps.length > 1 ? plural(ps.length, 'parcela', 'parcelas') : `Parcela ${ps[0].num}/${(S.parcPorAp.get(ps[0].aporte_id) || []).length}`}</span></span>
+      <span class="item-val"><b>${moeda(total)}</b></span>
+      ${wa ? `<span class="item-ac"><a class="btn peq sec ic-movel" href="${wa}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener" title="Lembrar pelo WhatsApp" aria-label="Lembrar ${esc(c?.nome || '')} pelo WhatsApp">${icone('conversa')}<span class="so-largo">Lembrar</span></a></span>` : ''}
+    </div>`;
+  };
+  const cab = (t, d, ps) => `<div class="rd-cab"><h3>${t} <span>${diaSem(d)}, ${dataCurta(d)}</span></h3>${ps.length ? `<b>${moeda(soma(ps, p => p.valor))}</b>` : ''}</div>`;
+  const secHoje = `${cab('Hoje', h, doDia)}
+    ${listaParcelas(doDia) || '<p class="vazio-p">Nada vence hoje.</p>'}
+    ${atras.length ? `<button class="rd-atraso" data-a="agenda-ir" data-periodo="atraso">${icone('alerta')}<span>${plural(atras.length, 'parcela', 'parcelas')} em atraso · <b>${moeda(soma(atras, p => p.valor))}</b></span><span class="rd-ir">Ver e cobrar →</span></button>` : ''}`;
+  const secAmanha = `${cab('Amanhã', am, amanha)}
+    ${porCliente.size ? `<div class="lista">${[...porCliente.values()].map(linhaAmanha).join('')}</div>` : '<p class="vazio-p">Nada vence amanhã.</p>'}`;
+  abrir(`
+  <div class="dlg-cab"><h2>${foco === 'amanha' ? 'Vencimentos de amanhã' : 'Resumo do dia'}</h2><button class="x" data-a="fechar" aria-label="Fechar">×</button></div>
+  <div class="resumo-dia">${foco === 'amanha' ? secAmanha + secHoje : secHoje + (noite ? secAmanha : '')}</div>
+  <div class="acoes"><button class="btn pri" data-a="agenda-ir" data-periodo="p7">Abrir a Agenda</button><button class="btn sec" data-a="fechar">Fechar</button></div>
+  <label class="marcar rd-marcar"><input type="checkbox" data-in="resumo-abrir" ${prefsAviso().abrir ? 'checked' : ''}> Mostrar este resumo ao abrir o aplicativo</label>`);
+}
+
+// Ao abrir (ou voltar para) o aplicativo: o resumo aparece uma vez de manhã e outra no fim do dia,
+// se houver algo vencendo, em atraso ou (no fim do dia) para amanhã. Pela notificação, abre direto.
+function mostrarResumoAoAbrir() {
+  const pedido = new URLSearchParams(location.search).get('aviso');
+  if (pedido) {
+    history.replaceState(null, '', location.pathname + (demo() ? '?demo' : '') + location.hash);
+    return abrirResumoDia(pedido === 'amanha' ? 'amanha' : 'hoje');
+  }
+  if (!prefsAviso().abrir || dlg().open) return;
+  const h = hoje(); const noite = new Date().getHours() >= HORA_NOITE;
+  const chave = `credflux_resumo_visto_${demo() ? 'demo' : S.perfil?.email || ''}`;
+  const marca = `${h}:${noite ? 'noite' : 'dia'}`;
+  if (lerLocal(chave) === marca) return;
+  const pend = pendentes();
+  const hojeTem = pend.some(p => p.vencimento === h), atrasoTem = pend.some(p => p.vencimento < h);
+  const amanhaTem = noite && pend.some(p => p.vencimento === addDias(h, 1));
+  if (!hojeTem && !atrasoTem && !amanhaTem) return;
+  gravarLocal(chave, marca);
+  abrirResumoDia(amanhaTem && !hojeTem ? 'amanha' : 'hoje');
+}
+
+// Notificações no celular (Web Push) ---------------------------------------------------------------
+// Às 9h, os vencimentos do dia e os atrasos; às 21h, os clientes de amanhã. Quem manda é a função
+// "notificar" do Supabase (supabase/functions/notificar), chamada pelo agendamento do atualizacao_02.sql.
+const pushSuportado = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const ehIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const instalado = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const b64uBytes = s => { const t = String(s).replace(/-/g, '+').replace(/_/g, '/'); const bin = atob(t + '==='.slice((t.length + 3) % 4)); return Uint8Array.from(bin, ch => ch.charCodeAt(0)); };
+let registroSW = null;
+function registrarSW() {
+  if (!('serviceWorker' in navigator)) return Promise.resolve(null);
+  if (!registroSW) {
+    registroSW = navigator.serviceWorker.register('sw.js').catch(() => null);
+    // toque numa notificação com o aplicativo aberto: o sw.js avisa e o resumo abre aqui
+    navigator.serviceWorker.addEventListener('message', e => { if (e.data?.aviso && S.perfil?.membro) abrirResumoDia(e.data.aviso === 'amanha' ? 'amanha' : 'hoje'); });
+  }
+  return registroSW;
+}
+async function inscricaoAtual() {
+  if (!pushSuportado()) return null;
+  const reg = await registrarSW();
+  return reg ? reg.pushManager.getSubscription().catch(() => null) : null;
+}
+function dadosInscricao(sub) {
+  const j = sub.toJSON(); const ua = navigator.userAgent;
+  const aparelho = /iphone/i.test(ua) ? 'iPhone' : /ipad/i.test(ua) ? 'iPad' : /android/i.test(ua) ? 'Android' : /windows/i.test(ua) ? 'Windows' : /mac/i.test(ua) ? 'Mac' : 'Navegador';
+  let fuso = 'America/Sao_Paulo'; try { fuso = Intl.DateTimeFormat().resolvedOptions().timeZone || fuso; } catch { /* fuso padrão */ }
+  return { endpoint: j.endpoint, p256dh: j.keys?.p256dh, auth: j.keys?.auth, fuso, detalhes: prefsAviso().detalhes, aparelho };
+}
+// A inscrição de um aparelho pode mudar com o tempo: a cada entrada, o servidor recebe a atual.
+async function sincronizarInscricao() {
+  if (demo() || !pushSuportado() || Notification.permission !== 'granted') return;
+  const sub = await inscricaoAtual();
+  if (sub) S.store.salvarInscricao(dadosInscricao(sub)).catch(() => {});
+}
+// Demonstração: a notificação de exemplo usa os dados de exemplo
+function exemploNotificacao() {
+  const h = hoje(); const pend = pendentes(); const grupos = new Map();
+  for (const p of pend.filter(x => x.vencimento === h)) { const n = clienteDe(p)?.nome || 'Cliente'; grupos.set(n, r2((grupos.get(n) || 0) + p.valor)); }
+  const itens = [...grupos].sort((a, b) => b[1] - a[1]); const atr = pend.filter(p => p.vencimento < h);
+  const atraso = atr.length ? `${plural(atr.length, 'parcela', 'parcelas')} em atraso (${moeda(soma(atr, p => p.valor))})` : '';
+  if (!itens.length) return atr.length ? { titulo: 'Parcelas em atraso', texto: `${cap(atraso)}. Toque para ver e cobrar.` } : { titulo: 'Vencimentos de hoje', texto: 'Nada vence hoje.' };
+  const lista = itens.slice(0, 3).map(([n, v]) => `${n} ${moeda(v)}`).join(', ') + (itens.length > 3 ? ` e mais ${itens.length - 3}` : '');
+  return { titulo: `Hoje: ${plural(itens.length, 'cliente', 'clientes')} · ${moeda(soma(itens, i => i[1]))}`, texto: [lista, atraso].filter(Boolean).join(' · ') };
+}
+async function carregarAvisos() {
+  const el = $('#painel-avisos'); if (!el) return;
+  const p = prefsAviso(); const sub = demo() ? null : await inscricaoAtual();
+  const perm = 'Notification' in window ? Notification.permission : 'nao';
+  let estado = '', botoes = '';
+  if (!pushSuportado()) {
+    estado = ehIOS() && !instalado()
+      ? 'No iPhone, primeiro adicione o CredFlux à Tela de Início (Compartilhar › Adicionar à Tela de Início) e abra por lá. Depois, ligue aqui.'
+      : 'Este navegador não recebe notificações. No celular, use o Chrome (Android) ou o CredFlux instalado na Tela de Início (iPhone).';
+  } else if (perm === 'denied') {
+    estado = 'As notificações do CredFlux estão bloqueadas neste aparelho. Libere em Permissões do site › Notificações, no navegador, e volte aqui.';
+  } else if (demo()) {
+    botoes = `<button class="btn pri" data-a="avisos-exemplo">${icone('sino')}Ver exemplo de notificação</button>`;
+    estado = 'Na demonstração, a notificação aparece só como exemplo. Na sua conta, ela chega todos os dias, mesmo com o aplicativo fechado.';
+  } else if (sub) {
+    botoes = `<button class="btn sec" data-a="avisos-teste">${icone('sino')}Enviar teste</button><button class="btn sec" data-a="avisos-desligar">Desligar neste aparelho</button>`;
+  } else {
+    botoes = `<button class="btn pri" data-a="avisos-ligar">${icone('sino')}Ligar neste aparelho</button>`;
+    estado = 'Ligue em cada celular que deve receber. As notificações chegam mesmo com o aplicativo fechado.';
+  }
+  el.innerHTML = `
+    <div class="painel-cab"><h2>Notificações no celular</h2>${demo() || !pushSuportado() ? '' : sub ? pill('verde', 'Ligadas neste aparelho') : pill('', 'Desligadas')}</div>
+    <ul class="av-horas">
+      <li><b>9h</b><span>Vencimentos do dia e parcelas em atraso</span></li>
+      <li><b>21h</b><span>Clientes que pagam amanhã</span></li>
+    </ul>
+    <form class="form" data-f="avisos">
+      <label class="marcar"><input type="checkbox" name="detalhes" ${p.detalhes ? 'checked' : ''}> Mostrar nomes e valores na notificação</label>
+      <p class="dica">Na tela bloqueada, quem estiver com o celular na mão consegue ler. Desmarcado, a notificação diz só quantos clientes vencem.</p>
+      <label class="marcar"><input type="checkbox" name="abrir" ${p.abrir ? 'checked' : ''}> Mostrar o resumo do dia ao abrir o aplicativo</label>
+    </form>
+    ${botoes ? `<div class="acoes">${botoes}</div>` : ''}
+    ${estado ? `<p class="dica">${estado}</p>` : ''}`;
 }
 
 // Exportação ------------------------------------------------------------------------
@@ -1175,19 +1447,78 @@ const ACOES = {
   nav: d => { fechar(); irPara(d.v); },
   fechar: () => fechar(),
   acesso: d => telaAcesso(d.m),
+  // Reenvia o código do cadastro ou, com data-tipo="senha", o da nova senha
   'reenviar-codigo': async (d, el) => {
-    const email = String($('form[data-f="confirmar"] [name=email]')?.value || S.emailConfirmar || '').trim();
+    const senha = d.tipo === 'senha';
+    const email = String($(`form[data-f="${senha ? 'redefinir' : 'confirmar'}"] [name=email]`)?.value || (senha ? S.emailRedefinir : S.emailConfirmar) || '').trim();
     if (!email) return toast('Digite o e-mail cadastrado.', 'erro');
-    S.emailConfirmar = email; el.disabled = true;
-    try { await tentar(() => S.store.reenviarCodigo(email), `Código reenviado para ${email}`); }
+    if (senha) S.emailRedefinir = email; else S.emailConfirmar = email;
+    el.disabled = true;
+    try { await tentar(() => (senha ? S.store.esqueci(email) : S.store.reenviarCodigo(email)), `Código reenviado para ${email}`); }
     finally { setTimeout(() => { if (el.isConnected) el.disabled = false; }, 30000); }
+  },
+  senha: () => formSenha(),
+  'senha-codigo': async (d, el) => {
+    el.disabled = true;
+    try { await tentar(() => S.store.esqueci(S.perfil.email)); formSenhaCodigo(); }
+    catch { if (el.isConnected) el.disabled = false; }
+  },
+  'ordem-cli': d => { S.oCli = d.o; gravarLocal(CHAVE_ORDEM_CLI, d.o); render(); },
+  'backup-xlsx': async (d, el) => {
+    el.disabled = true;
+    try {
+      const blob = await gerarBackupXLSX(modeloBackup());
+      if (await entregarArquivo(blob, `CredFlux_backup_${hoje()}.xlsx`, 'Backup do CredFlux') === 'baixado') toast('Planilha de backup gerada', 'ok');
+    } catch (e) { toast(e.message || 'Não foi possível gerar a planilha', 'erro'); }
+    finally { if (el.isConnected) el.disabled = false; }
+  },
+  'avisos-ligar': async (d, el) => {
+    el.disabled = true;
+    try {
+      if (await Notification.requestPermission() !== 'granted') throw new Error('Sem permissão para notificar. Libere as notificações do CredFlux no navegador.');
+      const reg = await registrarSW(); if (!reg) throw new Error('Este navegador não deixou ligar as notificações.');
+      await navigator.serviceWorker.ready;
+      const chave = await S.store.chavePush();
+      const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(chave) });
+      await S.store.salvarInscricao(dadosInscricao(sub));
+      toast('Notificações ligadas neste aparelho', 'ok');
+    } catch (e) { toast(e.message || 'Não foi possível ligar as notificações', 'erro'); }
+    finally { carregarAvisos(); }
+  },
+  'avisos-desligar': async (d, el) => {
+    el.disabled = true;
+    try {
+      const sub = await inscricaoAtual();
+      if (sub) { await S.store.removerInscricao(sub.endpoint).catch(() => {}); await sub.unsubscribe(); }
+      toast('Notificações desligadas neste aparelho', 'ok');
+    } catch (e) { toast(e.message || 'Não foi possível desligar as notificações', 'erro'); }
+    finally { carregarAvisos(); }
+  },
+  'avisos-teste': async (d, el) => {
+    el.disabled = true;
+    try {
+      const r = await S.store.testarPush();
+      if (r?.enviados) toast('Teste enviado: a notificação chega em alguns segundos', 'ok');
+      else toast('Nenhum aparelho recebeu o teste. Desligue e ligue de novo as notificações.', 'erro');
+    } catch (e) { toast(e.message || 'Não foi possível enviar o teste', 'erro'); }
+    finally { if (el.isConnected) el.disabled = false; }
+  },
+  'avisos-exemplo': async () => {
+    try {
+      if (await Notification.requestPermission() !== 'granted') throw new Error('Libere as notificações do CredFlux no navegador para ver o exemplo.');
+      const reg = await registrarSW(); if (!reg) throw new Error('Este navegador não mostra notificações.');
+      await navigator.serviceWorker.ready;
+      const m = exemploNotificacao();
+      await reg.showNotification(m.titulo, { body: m.texto, tag: 'credflux-exemplo', icon: 'icon-192.png', badge: 'badge-96.png', data: { url: './?aviso=hoje' } });
+      toast('Exemplo enviado: veja na barra de notificações', 'ok');
+    } catch (e) { toast(e.message || 'Não foi possível mostrar o exemplo', 'erro'); }
   },
   sair: async () => { await S.store.sair(); if (!demo()) location.hash = ''; },
   'sair-demo': async (d, el, ev) => { ev.preventDefault(); localStorage.removeItem(CHAVE_DEMO); location.href = location.pathname; },
   graf: d => { S.grafico = d.m; render(); },
   'agenda-ir': d => {
     S.f = { ...S.f, periodo: d.periodo, de: d.de || '', ate: d.ate || '', situacao: d.situacao || 'pendente', cliente: d.cliente || '' };
-    irPara('agenda');
+    fechar(); irPara('agenda');
   },
   receber: d => abrirRecebimento(d.id),
   'rec-lista': () => abrirListaReceber(),
@@ -1329,10 +1660,18 @@ function abrirAjuda() {
     <p>Use o botão de confirmar (✓) ao lado da parcela ou <b>Registrar recebimento</b>, no Início. Dá para receber a parcela inteira, só os juros ou outro valor; antes de confirmar, o sistema mostra como ficam o saldo e as próximas parcelas. O dinheiro paga primeiro a multa, depois os juros e por último o capital. Para corrigir, use <b>Desfazer</b> na Agenda ou no crédito.</p>
     <h3>Recibo e acordo em PDF</h3>
     <p>Depois de receber, toque em <b>Emitir recibo</b> na mensagem que aparece, ou no botão <b>Recibo</b> da parcela, na Agenda ou no crédito. O recibo sai em PDF com o valor por extenso, a divisão entre multa, juros e capital e a assinatura do credor. No celular, o recibo e o acordo já abrem para enviar pelo WhatsApp; no computador, são baixados.</p>
+    <h3>Notificações no celular</h3>
+    <p>Em Configurações › Notificações no celular, toque em <b>Ligar neste aparelho</b>. Às 9h chegam os vencimentos do dia e os atrasos; às 21h, os clientes que pagam amanhã, mesmo com o aplicativo fechado. Ao abrir o aplicativo, aparece também o resumo do dia, com o botão <b>Lembrar</b> para mandar um lembrete pelo WhatsApp a quem paga amanhã. No iPhone, adicione o CredFlux à Tela de Início e ligue por lá.</p>
     <h3>Atrasos e multa</h3>
     <p>A multa é por crédito e conta desde a parcela mais antiga em aberto: na taxa fixa, os juros do contrato ÷ 30 por dia; nas outras formas, o saldo × a taxa mensal ÷ 30 por dia. Ela pode ser dispensada ao receber. <b>Cobrar</b>, no Início, abre o WhatsApp do cliente em atraso; com mais de um cliente, abre a Agenda nos atrasos.</p>
     <h3>Agenda</h3>
     <p>Filtre por período, cliente e situação, agrupe por dia ou por mês e baixe a planilha.</p>
+    <h3>Clientes</h3>
+    <p>Ordene a lista por nome, pelo vencimento mais próximo (os atrasados primeiro) ou pelo valor a receber. A escolha fica guardada neste aparelho.</p>
+    <h3>Backup em planilha</h3>
+    <p>Em Configurações › Backup e exportação, <b>Backup em planilha (Excel)</b> gera um arquivo com uma aba de resumo e uma aba para cada cliente, com os créditos e todas as parcelas.</p>
+    <h3>Senha</h3>
+    <p>Para trocar a senha, use <b>Alterar senha</b> em Configurações. Esqueceu? Na tela de entrada, toque em <b>Esqueci a senha</b>: chega um código de 6 dígitos no seu e-mail e você cria a senha nova ali mesmo.</p>
     <h3>Documentos e acordo</h3>
     <p>Na ficha do cliente ficam contratos, recibos e fotos (PDF ou imagem). Em cada crédito, <b>Acordo em PDF</b> gera o acordo com as parcelas e os termos definidos em Configurações › Dados do acordo.</p>
     <h3>Assinatura</h3>
@@ -1435,7 +1774,8 @@ const FORMS = {
       if (r.precisaConfirmar) { S.emailConfirmar = email; telaAcesso('confirmar'); }
     } else {
       await tentar(() => S.store.esqueci(email));
-      telaAcesso('entrar', `Se ${email} tiver acesso, chegará um link para criar uma nova senha.`);
+      S.emailRedefinir = email;
+      telaAcesso('redefinir');
     }
   },
   async confirmar(fd) {
@@ -1445,9 +1785,48 @@ const FORMS = {
     // a sessão começa sozinha: aoMudarAcesso recebe SIGNED_IN e chama iniciarSessao
   },
   async 'nova-senha'(fd) {
+    if (fd.get('senha') !== fd.get('senha2')) return toast('As duas senhas não são iguais.', 'erro');
     await tentar(() => S.store.novaSenha(fd.get('senha')), 'Senha alterada');
     S.recuperando = false;
     history.replaceState(null, '', location.pathname); await iniciarSessao();
+  },
+  // Esqueci a senha: o código do e-mail e a senha nova na mesma tela
+  async redefinir(fd) {
+    const email = String(fd.get('email') || '').trim(); const senha = fd.get('senha');
+    if (senha !== fd.get('senha2')) return toast('As duas senhas não são iguais.', 'erro');
+    S.emailRedefinir = email; S.redefinindo = true;
+    try { await tentar(() => S.store.validarCodigoSenha(email, soDigitos(fd.get('codigo')))); }
+    catch (e) { S.redefinindo = false; throw e; }
+    try { await tentar(() => S.store.novaSenha(senha), 'Senha alterada'); }
+    catch { S.redefinindo = false; S.recuperando = true; return telaNovaSenha('O código valeu. Escolha outra senha para concluir.'); }
+    S.redefinindo = false; S.recuperando = false;
+    history.replaceState(null, '', location.pathname); await iniciarSessao();
+  },
+  // Configurações › Alterar senha: confere a atual e grava a nova
+  async senha(fd) {
+    const nova = fd.get('nova');
+    if (nova !== fd.get('nova2')) return toast('As duas senhas novas não são iguais.', 'erro');
+    if (nova === fd.get('atual')) return toast('A nova senha precisa ser diferente da atual.', 'erro');
+    await tentar(() => S.store.trocarSenha(fd.get('atual'), nova), demo() ? 'Na demonstração, a senha não muda de verdade' : 'Senha alterada');
+    fechar();
+  },
+  // Alterar senha sem lembrar a atual: código no e-mail de quem está logado
+  async 'senha-codigo'(fd) {
+    const nova = fd.get('nova');
+    if (nova !== fd.get('nova2')) return toast('As duas senhas novas não são iguais.', 'erro');
+    S.redefinindo = true;
+    try {
+      await tentar(() => S.store.validarCodigoSenha(S.perfil.email, soDigitos(fd.get('codigo'))));
+      await tentar(() => S.store.novaSenha(nova), 'Senha alterada');
+      fechar();
+    } finally { S.redefinindo = false; }
+  },
+  // Notificações: preferências deste aparelho (e o servidor, se ele já recebe)
+  async avisos(fd) {
+    gravarPrefsAviso({ detalhes: fd.get('detalhes') === 'on', abrir: fd.get('abrir') === 'on' });
+    const sub = demo() ? null : await inscricaoAtual();
+    if (sub) await tentar(() => S.store.salvarInscricao(dadosInscricao(sub)), 'Preferência gravada');
+    else toast('Preferência gravada', 'ok');
   },
   async 'criar-conta'(fd) {
     await tentar(() => S.store.criarConta(fd.get('nome').trim(), fd.get('seu').trim()), 'Conta criada');
@@ -1556,7 +1935,8 @@ document.addEventListener('change', async e => {
     return carregarDocs(cli);
   }
   if (e.target.closest('form[data-f="receber"]')) return previaRecebimento(e.target);
-  const form = e.target.closest('form[data-f="agenda"], form[data-f="aportes"]');
+  if (e.target.dataset.in === 'resumo-abrir') { gravarPrefsAviso({ abrir: e.target.checked }); return; }
+  const form = e.target.closest('form[data-f="agenda"], form[data-f="aportes"], form[data-f="avisos"]');
   if (form) return FORMS[form.dataset.f](new FormData(form), form);
   if (e.target.closest('#f-aporte') && !e.target.dataset.in) campoAporteMudou(e.target);
 });
@@ -1606,12 +1986,21 @@ async function iniciarSessao() {
   if (!user) return telaAcesso();
   S.user = user;
   S.perfil = await S.store.perfil(user);
-  if (S.perfil.membro) { S.dados = await S.store.carregar(); indexar(); }
+  if (S.perfil.membro) { S.dados = await S.store.carregar(); S.carregadoEm = Date.now(); indexar(); }
   const v = location.hash.slice(1);
   S.view = VIEWS[v] ? v : 'inicio';
   if (!S.perfil.membro && S.view !== 'admin') S.view = 'inicio';
   irPara(S.view);
+  if (S.perfil.membro) { mostrarResumoAoAbrir(); sincronizarInscricao(); }
 }
+
+// Voltar para o aplicativo já aberto (celular): dados de mais de 30 minutos são recarregados e o resumo
+// do dia aparece, como ao abrir.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !S.perfil?.membro || !S.dados) return;
+  const velho = Date.now() - (S.carregadoEm || 0) > 30 * 60e3;
+  (velho && !dlg().open ? recarregar() : Promise.resolve()).then(() => mostrarResumoAoAbrir()).catch(() => {});
+});
 
 async function iniciar() {
   const ehDemo = new URLSearchParams(location.search).has('demo');
@@ -1623,10 +2012,12 @@ async function iniciar() {
     return;
   }
   S.publica = await S.store.configPublica().catch(() => ({}));
+  registrarSW();
   const recuperacao = /type=recovery/.test(location.hash);
   S.store.aoMudarAcesso((ev, user) => {
-    if (ev === 'PASSWORD_RECOVERY') { S.recuperando = true; return telaNovaSenha(); }
-    if (ev === 'SIGNED_IN' && !S.user && !S.recuperando && user) { S.user = user; setTimeout(() => iniciarSessao().catch(e => toast(e.message, 'erro'))); }
+    // S.redefinindo: o código do e-mail está sendo conferido numa tela que cuida do resto
+    if (ev === 'PASSWORD_RECOVERY') { if (S.redefinindo) return; S.recuperando = true; return telaNovaSenha(); }
+    if (ev === 'SIGNED_IN' && !S.user && !S.recuperando && !S.redefinindo && user) { S.user = user; setTimeout(() => iniciarSessao().catch(e => toast(e.message, 'erro'))); }
     if (ev === 'SIGNED_OUT') { S.user = null; S.perfil = null; telaAcesso(); }
   });
   if (recuperacao || S.recuperando) { S.recuperando = true; return telaNovaSenha(); }

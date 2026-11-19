@@ -13,7 +13,17 @@ function erro(e) {
     [/Token has expired or is invalid|otp_expired|invalid.*(otp|token)/i, 'Código inválido ou vencido. Confira os números ou peça outro código.'],
     [/only request this after|security purposes/i, 'Aguarde um minuto para pedir outro código.'],
     [/User already registered/i, 'Este e-mail já tem acesso. Use "Entrar" ou "Esqueci a senha".'],
-    [/Password should be at least/i, 'A senha precisa de pelo menos 6 caracteres.'],
+    [/Password should be at least (\d+)/i, r => `A senha precisa de pelo menos ${r[1]} caracteres.`],
+    [/Password should contain at least one character/i, 'A senha precisa misturar letras maiúsculas e minúsculas, números e símbolos.'],
+    [/New password should be different/i, 'A nova senha precisa ser diferente da atual.'],
+    [/weak.?password|known to be weak|pwned/i, 'Esta senha é fraca ou já apareceu em vazamentos de dados. Escolha outra.'],
+    [/reauthenticat/i, 'Por segurança, saia, entre de novo e repita a troca de senha.'],
+    [/Auth session missing|session_not_found/i, 'Sua sessão terminou. Entre de novo.'],
+    // e-mail: sem SMTP próprio, o Supabase só manda para a equipe do projeto; com SMTP errado, falha o envio
+    [/Email address .*(not authorized|cannot be used)|email_address_not_authorized/i, 'O envio de e-mails do CredFlux está fora do ar. Tente mais tarde ou fale com o suporte.'],
+    [/Error sending .*e?mail|sending (recovery|confirmation|magic)/i, 'Não foi possível enviar o e-mail agora. Tente de novo em alguns minutos.'],
+    [/email rate limit|over_email_send_rate_limit/i, 'Limite de e-mails por hora atingido. Tente de novo mais tarde.'],
+    [/push_inscrever|push_chave|push_cancelar|push_inscricoes/i, 'O banco ainda não recebeu a atualização 02 (supabase/atualizacao_02.sql).'],
     [/row-level security|violates row-level/i, 'Sem permissão para gravar (assinatura vencida ou acesso limitado).'],
     [/membros_pkey|duplicate key value.*membros/i, 'Este e-mail já participa de uma conta.'],
     [/aportes_cliente_id_fkey|violates foreign key.*aportes/i, 'Este cliente tem aportes. Exclua os aportes antes.'],
@@ -23,7 +33,7 @@ function erro(e) {
     [/relation "?(public\.)?documentos"? does not exist|Bucket not found|salvar_dados_acordo|column .*mora|column .*prazo_dias/i, 'O banco ainda não recebeu a atualização 01 (supabase/atualizacao_01.sql).'],
     [/Failed to fetch|NetworkError/i, 'Sem conexão com o servidor. Confira a internet e tente de novo.'],
   ];
-  for (const [re, txt] of traduz) if (re.test(m)) throw new Error(txt);
+  for (const [re, txt] of traduz) { const r = m.match(re); if (r) throw new Error(typeof txt === 'function' ? txt(r) : txt); }
   throw new Error(m);
 }
 
@@ -34,6 +44,21 @@ async function criarRemoto() {
   const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
   const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
   const ok = ({ data, error }) => { erro(error); return data; };
+
+  // Função "notificar" do Supabase (Edge Function), com o login de quem pede.
+  async function funcao(acao) {
+    const { data, error } = await sb.functions.invoke('notificar', { body: { acao } });
+    if (!error) return data;
+    let msg = error.message || '';
+    const resp = error.context;
+    if (resp && typeof resp.json === 'function') {
+      if (resp.status === 404) throw new Error('A função de notificações ("notificar") ainda não foi publicada no Supabase.');
+      try { const b = await resp.json(); msg = b.erro || b.message || msg; } catch { /* resposta sem corpo */ }
+    } else if (/Failed to send a request|Failed to fetch/i.test(msg)) {
+      throw new Error('A função de notificações ("notificar") não respondeu. Confira se ela foi publicada no Supabase.');
+    }
+    return erro({ message: msg });
+  }
 
   async function todos(tabela, ordem) {
     const passo = 1000; let ini = 0; const out = [];
@@ -54,12 +79,39 @@ async function criarRemoto() {
       const d = ok(await sb.auth.signUp({ email, password: senha, options: { emailRedirectTo: location.origin + location.pathname } }));
       return { precisaConfirmar: !d.session };
     },
+    // Nova senha: o e-mail (modelo "Reset Password" com {{ .Token }}) leva um código que a pessoa digita no CredFlux.
+    // O link antigo (redirectTo) continua valendo para e-mails que já saíram com botão.
     async esqueci(email) { ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname })); },
+    // O código certo abre a sessão de recuperação (o aoMudarAcesso recebe PASSWORD_RECOVERY); depois, novaSenha.
+    async validarCodigoSenha(email, codigo) { ok(await sb.auth.verifyOtp({ email, token: codigo, type: 'recovery' })); },
     // Confirmação do cadastro pelo código que chega no e-mail (modelo "Confirm signup" com {{ .Token }}).
     // Dá certo: a sessão começa e o aoMudarAcesso recebe SIGNED_IN.
     async confirmarCodigo(email, codigo) { ok(await sb.auth.verifyOtp({ email, token: codigo, type: 'email' })); },
     async reenviarCodigo(email) { ok(await sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: location.origin + location.pathname } })); },
     async novaSenha(senha) { ok(await sb.auth.updateUser({ password: senha })); },
+    // Troca de senha em Configurações: confere a senha atual entrando de novo (isso também renova a sessão,
+    // como o Supabase pede para trocar a senha) e grava a nova.
+    async trocarSenha(atual, nova) {
+      const { data } = await sb.auth.getSession();
+      const email = data.session?.user?.email;
+      if (!email) throw new Error('Sua sessão terminou. Entre de novo.');
+      const r = await sb.auth.signInWithPassword({ email, password: atual });
+      if (r.error) { if (/Invalid login credentials/i.test(r.error.message)) throw new Error('A senha atual não confere.'); erro(r.error); }
+      ok(await sb.auth.updateUser({ password: nova }));
+    },
+
+    // Notificações no celular (atualizacao_02.sql e a função "notificar")
+    async chavePush() {
+      const r = await sb.rpc('push_chave_publica');
+      erro(r.error);
+      if (r.data) return r.data;
+      const f = await funcao('chave');
+      if (!f?.publica) throw new Error('As notificações ainda não foram ligadas no servidor do CredFlux.');
+      return f.publica;
+    },
+    async salvarInscricao(i) { ok(await sb.rpc('push_inscrever', { p: i })); },
+    async removerInscricao(endpoint) { ok(await sb.rpc('push_cancelar', { p_endpoint: endpoint })); },
+    async testarPush() { return funcao('teste'); },
     async sair() { await sb.auth.signOut(); },
     async configPublica() {
       const { data } = await sb.from('config').select('preco_mensal,dias_teste,contato').eq('id', 1).maybeSingle();
@@ -195,6 +247,15 @@ function criarDemo() {
     modo: 'demo',
     async usuario() { return usuario; },
     aoMudarAcesso() {},
+    // Na demonstração não há servidor: senha e notificações só mostram como funcionam.
+    async esqueci() {},
+    async validarCodigoSenha() {},
+    async novaSenha() {},
+    async trocarSenha(atual, nova) { if (!atual || !nova) throw new Error('Preencha as senhas.'); },
+    async chavePush() { return null; },
+    async salvarInscricao() {},
+    async removerInscricao() {},
+    async testarPush() { return { enviados: 0 }; },
     async sair() { localStorage.removeItem(CHAVE_DEMO); location.href = location.pathname; },
     async configPublica() { return config; },
     async perfil() { return { email: usuario.email, membro: db.membros[0], conta: db.conta, admin: false, config }; },

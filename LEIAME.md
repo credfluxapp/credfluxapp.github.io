@@ -53,9 +53,24 @@ Sem SMTP próprio, o Supabase só envia e-mails para quem é da equipe do projet
    - Minimum interval between emails: `60` segundos. Salve.
 3. **Supabase › Authentication › Emails › Templates**:
    - *Confirm signup*: assunto "Seu código de confirmação do CredFlux"; no corpo, cole `supabase/emails/confirmar_cadastro.html`. O modelo manda o código (`{{ .Token }}`), que a pessoa digita na tela "Confirme seu e-mail" do CredFlux.
-   - *Reset Password*: assunto "Crie uma nova senha no CredFlux"; no corpo, cole `supabase/emails/nova_senha.html`.
+   - *Reset Password*: assunto "Seu código para criar uma nova senha no CredFlux"; no corpo, cole `supabase/emails/nova_senha.html`. O modelo também manda só o código (`{{ .Token }}`), sem link: a pessoa toca em "Esqueci a senha", recebe o código e cria a senha nova na tela "Criar nova senha" do CredFlux. E-mails antigos, com botão, continuam funcionando.
 4. **Supabase › Authentication › Rate Limits**: suba o limite de e-mails por hora (o padrão com SMTP próprio é 30). O Gmail comum envia algumas centenas por dia; com muitos cadastros, troque por um serviço de e-mail transacional (Resend, Postmark, SendGrid).
 5. Em **Sign In / Providers › Email**, deixe *Confirm email* ligado e o código com 6 dígitos valendo 1 hora (*Email OTP Length* 6, *Email OTP Expiration* 3600).
+
+**Se o e-mail (código do cadastro ou de nova senha) não chega**, confira nesta ordem:
+- *SMTP Settings* com "Enable custom SMTP" ligado. Desligado, o Supabase só manda para a equipe do projeto e o CredFlux mostra "O envio de e-mails do CredFlux está fora do ar".
+- **Logs › Auth** (ou *Authentication › Logs*): procure o pedido de "recover" ou "signup". Erro 535 ou "Username and Password not accepted" quer dizer senha de app do Gmail errada.
+- *Rate Limits*: com o limite de e-mails por hora estourado, aparece "Limite de e-mails por hora atingido".
+- Caixa de spam e aba Promoções de quem pediu.
+- Quem foi incluído numa conta (Configurações › Pessoas com acesso) e ainda não usou "Criar acesso" não tem senha: o código de nova senha não chega para esse e-mail. A pessoa precisa usar "Criar acesso" com o mesmo e-mail.
+
+### 6. Notificações no celular (9h e 21h)
+Às 9h (horário de Brasília) chegam os vencimentos do dia e as parcelas em atraso; às 21h, os clientes que pagam amanhã. Chegam mesmo com o aplicativo fechado: Android (Chrome) e iPhone com o CredFlux adicionado à Tela de Início (iOS 16.4 ou mais novo).
+1. **Edge Functions › Deploy a new function › Via Editor**: nome `notificar`; cole `supabase/functions/notificar/index.ts` e publique. Nos detalhes da função, desligue **Verify JWT** (Enforce JWT verification): o agendamento chama sem login, e a função confere o login sozinha quando o pedido vem do aplicativo.
+2. **SQL Editor**: rode `supabase/atualizacao_02.sql`. Ele cria a tabela dos aparelhos, liga as extensões `pg_cron` e `pg_net` e agenda a função às 12:00 e 00:00 UTC (9h e 21h de Brasília). Para mudar os horários, troque o agendamento e as faixas de horário da função `push_reservar` no mesmo arquivo.
+3. No celular, em **Configurações › Notificações no celular**, toque em **Ligar neste aparelho** e depois em **Enviar teste**. Na primeira vez, a função cria sozinha a chave do serviço de notificações e a guarda no banco, sem acesso pelo aplicativo. Nenhuma chave vai para arquivo.
+4. Cada pessoa liga em cada aparelho. A opção "Mostrar nomes e valores na notificação" vem marcada; desmarcada, a notificação diz só quantos clientes vencem (bom para quem deixa o celular à vista).
+5. Se o teste não chegar: confira em **Edge Functions › notificar › Logs** e em **Integrations › Cron** (job `credflux-notificar`).
 
 ## Como funciona a assinatura
 - Quem cria uma conta ganha os dias de teste definidos no painel.
@@ -88,11 +103,16 @@ A frequência pode ser diária, semanal, quinzenal, mensal, bimestral, trimestra
 
 ## Documentos e acordo
 - Cada cliente guarda contratos, recibos e fotos (PDF ou imagem, até 10 MB) numa pasta privada do Supabase Storage.
-- Cada crédito gera um acordo em PDF com as condições, as parcelas e os termos definidos em Mais › Dados do acordo. Os termos são um modelo de referência e devem ser revisados por um advogado.
+- Cada crédito gera um acordo em PDF com as condições, as parcelas e os termos definidos em Configurações › Dados do acordo. Os termos são um modelo de referência e devem ser revisados por um advogado.
+
+## Backup em planilha
+- Configurações › Backup e exportação › **Backup em planilha (Excel)**: um arquivo `.xlsx` com a aba **Resumo** (cartões com os totais e a lista de clientes, com filtro e link para a aba de cada um) e uma aba para cada cliente, com os dados dele, os créditos e todas as parcelas, a situação em cores e os totais.
+- Também continuam as parcelas em CSV e a cópia completa em JSON. Os documentos anexados (PDF e fotos) ficam no CredFlux e não entram na planilha.
 
 ## Testes
-- Interface (demonstração, celular e computador): `python -m http.server 8765` nesta pasta e, em outro terminal, `node testes/teste_demo.js <pasta_das_fotos>`.
-- Regras do banco (isolamento entre contas, convites, pagamento, modo leitura, documentos): `npm i @electric-sql/pglite` e `node testes/teste_banco.mjs supabase/schema.sql supabase/atualizacao_01.sql` (46 verificações).
+- Interface (demonstração, celular e computador): `python -m http.server 8765` nesta pasta e, em outro terminal, `node testes/teste_demo.js <pasta_das_fotos>`. O teste também confere por dentro a planilha de backup (`testes/teste_planilha.py`, precisa do `openpyxl`).
+- Regras do banco (isolamento entre contas, convites, pagamento, modo leitura, documentos, notificações): `npm i @electric-sql/pglite` e `node testes/teste_banco.mjs supabase/schema.sql supabase/atualizacao_01.sql supabase/atualizacao_02.sql`.
+- Notificações (criptografia igual ao exemplo da RFC 8291, assinatura VAPID e textos): `node testes/teste_push.mjs`.
 - Cálculos (domingo, taxa fixa, multa, pagamento parcial): `node testes/teste_calc.mjs` (23 verificações).
 
 ## Custos e limites

@@ -5,7 +5,7 @@ const sql = fs.readFileSync(process.argv[2], 'utf8')
   .replace('create extension if not exists pgcrypto;', '')
   .replace(/SEU_EMAIL@EXEMPLO\.COM/g, 'admin@x.com');
 await db.exec(`
-  create role anon; create role authenticated;
+  create role anon; create role authenticated; create role service_role;
   create schema auth;
   create function auth.jwt() returns jsonb language sql stable as $$
     select coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb) $$;
@@ -19,7 +19,9 @@ await db.exec(`
   grant usage on schema storage to anon, authenticated;
 `);
 await db.exec(sql);
-for (const extra of process.argv.slice(3)) await db.exec(fs.readFileSync(extra, 'utf8'));
+// A parte da AGENDA (pg_cron e pg_net) só existe no Supabase: fica de fora aqui.
+for (const extra of process.argv.slice(3)) await db.exec(fs.readFileSync(extra, 'utf8').split(/\r?\n-- AGENDA/)[0]);
+const tem02 = process.argv.some(a => /atualizacao_02/.test(a));
 await db.exec(`alter table storage.objects enable row level security; grant all on all tables in schema storage to authenticated; grant usage on all sequences in schema storage to authenticated;`);
 await db.exec(`grant all on all tables in schema public to anon, authenticated;`);
 const res = [];
@@ -96,6 +98,65 @@ if (process.argv.length > 3) {
   ok((await como('bob@x.com', `select count(*)::int n from storage.objects`)).rows[0].n === 0, 'Bob não vê o arquivo da Ana');
   ok(await falha('bob@x.com', `insert into storage.objects(bucket_id, name) values ('documentos', $1)`, [pasta.replace('contrato', 'invasao')]) !== null, 'Bob não envia arquivo para a pasta da Ana');
   ok((await como('bob@x.com', `delete from storage.objects`)).affectedRows === 0, 'Bob não apaga arquivo da Ana');
+}
+
+if (tem02) {
+  // Atualização 02: notificações no celular
+  const insc = (endpoint, extra = {}) => JSON.stringify({ endpoint, p256dh: 'BPUB', auth: 'AUTH', fuso: 'America/Sao_Paulo', detalhes: true, aparelho: 'Teste', ...extra });
+  const ep1 = 'https://fcm.googleapis.com/fcm/send/ana-celular';
+  await como('ana@x.com', `select push_inscrever($1::jsonb)`, [insc(ep1)]);
+  ok((await como('ana@x.com', `select count(*)::int n from push_inscricoes`)).rows[0].n === 1, 'Ana liga as notificações no celular');
+  ok((await como('bob@x.com', `select count(*)::int n from push_inscricoes`)).rows[0].n === 0, 'Bob não vê os aparelhos da Ana');
+  await como('ana@x.com', `select push_inscrever($1::jsonb)`, [insc(ep1, { detalhes: false, fuso: 'Fuso/Inventado' })]);
+  const a1 = (await como('ana@x.com', `select count(*)::int n, bool_and(detalhes) d, min(fuso) f from push_inscricoes`)).rows[0];
+  ok(a1.n === 1 && a1.d === false && a1.f === 'America/Sao_Paulo', 'Ligar de novo atualiza o mesmo aparelho; fuso inválido vira o de Brasília');
+  ok((await falha('ana@x.com', `select push_inscrever($1::jsonb)`, [insc('https://evil.example.com/x')]) || '').includes('não aceito'), 'Endereço fora dos serviços de notificação é recusado');
+  ok(await falha('ana@x.com', `insert into push_inscricoes(email, conta_id, endpoint, p256dh, auth) values ('ana@x.com', $1, 'https://fcm.googleapis.com/x', 'a', 'b')`, [cli.conta_id]) !== null, 'Gravação direta na tabela de aparelhos bloqueada');
+  ok((await falha('x@x.com', `select push_inscrever($1::jsonb)`, [insc('https://fcm.googleapis.com/fcm/send/sem-conta')]) || '').includes('Entre numa conta'), 'Sem conta não liga notificações');
+  for (const f of ['push_reservar()', `push_do_email('ana@x.com')`, 'push_chave_obter()', `push_remover('${ep1}')`, `push_chave_criar('x', '{}'::jsonb)`]) {
+    ok(/permission denied|permissão negada/i.test(await falha('ana@x.com', `select * from ${f}`) || ''), `Só a função de notificações usa ${f.split('(')[0]}`);
+  }
+  ok((await como('ana@x.com', `select push_chave_publica() k`)).rows[0].k === null, 'Sem chave VAPID antes da primeira notificação');
+  await db.query(`select push_chave_criar('PUBLICA', '{"d":"segredo"}'::jsonb)`);
+  await db.query(`select push_chave_criar('OUTRA', '{"d":"x"}'::jsonb)`);
+  ok((await como('ana@x.com', `select push_chave_publica() k`)).rows[0].k === 'PUBLICA', 'Chave VAPID criada uma vez só; o aplicativo lê só a parte pública');
+  ok((await como('ana@x.com', `select count(*)::int n from push_chave`)).rows[0].n === 0, 'A chave privada não aparece para o aplicativo');
+
+  await como('ana@x.com', `select push_inscrever($1::jsonb)`, [insc(ep1)]);
+  const reservar = t => db.query(`select tipo, to_char(dia, 'YYYY-MM-DD') dia, itens, atrasadas, valor_atraso::float va, endpoint from push_reservar($1::timestamptz)`, [t]).then(r => r.rows);
+  // 15/12/2026 às 9h em Brasília: vence a parcela de R$ 1.100 da Padaria
+  const r9 = await reservar('2026-12-15 12:00+00');
+  ok(r9.length === 1 && r9[0].tipo === 'hoje' && r9[0].dia === '2026-12-15' && r9[0].itens.length === 1 && r9[0].itens[0].cliente === 'Padaria' && Number(r9[0].itens[0].valor) === 1100 && r9[0].atrasadas === 0,
+    `Às 9h: vencimentos do dia (${JSON.stringify(r9[0]?.itens)})`);
+  ok((await reservar('2026-12-15 12:40+00')).length === 0, 'O aviso da manhã não sai duas vezes no mesmo dia');
+  ok((await reservar('2026-12-15 15:00+00')).length === 0, 'Ao meio-dia não sai aviso');
+  // 15/12 às 21h em Brasília (00:00 UTC do dia 16): amanhã vence a parcela de R$ 550 da taxa fixa
+  const r21 = await reservar('2026-12-16 00:00+00');
+  ok(r21.length === 1 && r21[0].tipo === 'amanha' && r21[0].dia === '2026-12-15' && Number(r21[0].itens[0]?.valor) === 550,
+    `Às 21h: clientes de amanhã (${JSON.stringify(r21[0]?.itens)})`);
+  ok((await reservar('2026-12-16 01:00+00')).length === 0, 'O aviso da noite não sai duas vezes');
+  // 17/12 às 9h: nada vence no dia, mas há duas parcelas em atraso (R$ 1.100 e R$ 550)
+  const r17 = await reservar('2026-12-17 12:00+00');
+  ok(r17.length === 1 && r17[0].itens.length === 0 && r17[0].atrasadas === 2 && r17[0].va === 1650, `Atrasos no aviso da manhã (${r17[0]?.atrasadas}, R$ ${r17[0]?.va})`);
+  // Manaus (uma hora a menos): às 9h de Brasília são 8h lá, ainda na faixa da manhã
+  await como('ana@x.com', `select push_inscrever($1::jsonb)`, [insc(ep1, { fuso: 'America/Manaus' })]);
+  ok((await reservar('2026-12-18 12:00+00')).length === 1, 'Fuso de Manaus: aviso da manhã às 8h de lá');
+
+  // o celular passa para o Bob: a Ana deixa de receber nele
+  await como('bob@x.com', `select push_inscrever($1::jsonb)`, [insc(ep1)]);
+  ok((await como('ana@x.com', `select count(*)::int n from push_inscricoes`)).rows[0].n === 0 && (await como('bob@x.com', `select count(*)::int n from push_inscricoes`)).rows[0].n === 1,
+    'Celular que passa para o Bob deixa de avisar a Ana');
+  await como('ana@x.com', `select push_cancelar($1)`, [ep1]);
+  ok((await como('bob@x.com', `select count(*)::int n from push_inscricoes`)).rows[0].n === 1, 'Ana não desliga o aparelho do Bob');
+  await como('bob@x.com', `select push_cancelar($1)`, [ep1]);
+  ok((await como('bob@x.com', `select count(*)::int n from push_inscricoes`)).rows[0].n === 0, 'Bob desliga o próprio aparelho');
+
+  // quem sai da conta para de receber
+  const epC = 'https://updates.push.services.mozilla.com/wpush/v2/carla';
+  await como('carla@x.com', `select push_inscrever($1::jsonb)`, [insc(epC)]);
+  ok((await reservar('2026-12-19 12:00+00')).some(r => r.endpoint === epC), 'Carla (membro) recebe os avisos da conta');
+  await como('ana@x.com', `delete from membros where email='carla@x.com'`);
+  ok(!(await reservar('2026-12-20 12:00+00')).some(r => r.endpoint === epC), 'Quem sai da conta não recebe mais avisos');
 }
 
 await db.exec(`update contas set assinatura_ate = current_date - 1 where nome='Conta Ana'`);

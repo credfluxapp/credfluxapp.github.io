@@ -1,7 +1,7 @@
 // Teste da demonstração no Chrome sem interface (DevTools Protocol, sem instalar nada).
 // Uso: sirva a pasta (python -m http.server 8765) e rode: node testes/teste_demo.js <pasta_saida>
 // Também gera icon-192.png e icon-512.png a partir de icon.svg (com --icones).
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -84,11 +84,25 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
         const r = await cdp('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: t, height: t, scale: 1 } });
         fs.writeFileSync(path.join(raiz, `icon-${t}.png`), Buffer.from(r.data, 'base64'));
       }
+      // ícone pequeno da barra de notificações do Android: branco sobre fundo transparente
+      await tela(96, 96, false);
+      await cdp('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } });
+      await cdp('Page.navigate', { url: BASE + 'img/badge.svg' }); await espera(500);
+      const rb = await cdp('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 96, height: 96, scale: 1 } });
+      fs.writeFileSync(path.join(raiz, 'badge-96.png'), Buffer.from(rb.data, 'base64'));
+      await cdp('Emulation.setDefaultBackgroundColorOverride', {});
     }
 
     // Celular
     await tela(375, 812, true);
     await cdp('Page.navigate', { url: BASE + '?demo' }); await espera(1500);
+    // Resumo do dia ao abrir: a demonstração sempre tem uma parcela em atraso
+    const resumo = await avaliar(`(()=>{const d=document.getElementById('dlg'); return {aberto:d.open, tit:d.querySelector('.dlg-cab h2')?.textContent, hoje:!!d.querySelector('.rd-cab'), atraso:!!d.querySelector('.rd-atraso'), marca:!!document.querySelector('[data-in="resumo-abrir"]:checked')}})()`);
+    ok(resumo.aberto && resumo.tit === 'Resumo do dia' && resumo.hoje && resumo.atraso && resumo.marca, `Resumo do dia abre ao entrar, com hoje e os atrasos (${resumo.tit})`);
+    await foto('m00r_resumo_dia', false);
+    await clicar('#dlg [data-a="fechar"]');
+    ok(await avaliar(`/^\\d{4}-\\d{2}-\\d{2}:(dia|noite)$/.test(localStorage.credflux_resumo_visto_demo || '')`), 'O resumo fica marcado como visto nesta parte do dia');
+    ok(await avaliar(`navigator.serviceWorker.getRegistration().then(r=>!!r && /sw\\.js$/.test((r.active||r.installing||r.waiting).scriptURL))`), 'Receptor de notificações (sw.js) registrado');
     ok(await avaliar(`!!document.querySelector('.destaques .destaque.escuro')`), 'Início carregou com os destaques');
     ok(await transborda() <= 0, 'Início sem rolagem lateral no celular');
     ok(await avaliar(`['--bg','--surface','--ink','--muted','--line','--brand-dark','--brand-dark-2','--brand','--brand-text','--danger'].map(v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim().toUpperCase()).join(' ')`)
@@ -192,6 +206,20 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     ok(await transborda() <= 0, 'Clientes sem rolagem lateral');
     ok(await avaliar(`[...document.querySelectorAll('#lista-cli .item')].every(i=>/^[A-ZÀ-Ú?]{1,2}$/.test(i.querySelector('.av').textContent))`), 'Clientes com avatar de iniciais');
     await foto('m06_clientes');
+    // Ordem por vencimento: o vencimento em aberto mais antigo primeiro (atrasados no topo), sem parcela no fim
+    await clicar('[data-a="ordem-cli"][data-o="venc"]'); await espera(200);
+    const ordem = await avaliar(`(()=>{const d=JSON.parse(localStorage.credflux_demo_v2); const ap=new Map(d.aportes.map(a=>[a.id,a])); const prox=new Map();
+      for (const p of d.parcelas) { if (p.recebido_em) continue; const c=ap.get(p.aporte_id)?.cliente_id; if (!prox.has(c) || p.vencimento < prox.get(c)) prox.set(c, p.vencimento); }
+      const esperado=d.clientes.slice().sort((a,b)=>(prox.get(a.id)||'9999').localeCompare(prox.get(b.id)||'9999') || a.nome.localeCompare(b.nome,'pt-BR')).map(c=>c.nome);
+      const tela=[...document.querySelectorAll('#lista-cli .item .item-tit')].map(e=>e.textContent);
+      return {igual: JSON.stringify(esperado)===JSON.stringify(tela), tela, guardado: localStorage.credflux_ordem_clientes, on: document.querySelector('[data-a="ordem-cli"].on')?.dataset.o}})()`);
+    ok(ordem.igual && ordem.guardado === 'venc' && ordem.on === 'venc', `Clientes por vencimento (${ordem.tela.join(', ')})`);
+    ok(await avaliar(`[...document.querySelectorAll('#lista-cli .item .pill')].every(p=>/em atraso$|^Vence hoje$|^Próx\\. \\d{2}\\/\\d{2}$|^Quitado$|^Sem crédito$/.test(p.textContent))`), 'Pílula com o atraso ou o próximo vencimento de cada cliente');
+    ok(await transborda() <= 0, 'Clientes com a ordem sem rolagem lateral no celular');
+    await foto('m06b_clientes_vencimento');
+    await clicar('[data-a="ordem-cli"][data-o="valor"]'); await espera(200);
+    ok(await avaliar(`(()=>{const v=[...document.querySelectorAll('#lista-cli .item .item-val b')].map(b=>Number(b.textContent.replace(/[^\\d,]/g,'').replace(',','.'))); return v.every((x,i)=>!i || v[i-1]>=x)})()`), 'Clientes pelo maior valor a receber');
+    await clicar('[data-a="ordem-cli"][data-o="nome"]'); await espera(200);
     await clicar('[data-a="cli-ver"]'); await espera(500);
     await avaliar(`(()=>{const i=document.querySelector('[data-in="doc-arquivo"]'); const dt=new DataTransfer();
       dt.items.add(new File(['%PDF-1.4 teste'], 'contrato assinado.pdf', {type:'application/pdf'})); i.files=dt.files;
@@ -303,6 +331,15 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await foto('d01e_inicio_30dias');
     await clicar('[data-a="graf"][data-m="meses"]'); await espera(200);
 
+    // Toque na notificação das 21h: o aplicativo abre direto nos vencimentos de amanhã
+    await cdp('Page.navigate', { url: BASE + '?demo&aviso=amanha' }); await espera(1500);
+    const am = await avaliar(`(()=>{const d=document.getElementById('dlg'); return {aberto:d.open, tit:d.querySelector('.dlg-cab h2')?.textContent, busca:location.search,
+      lembrar:[...d.querySelectorAll('a[href*="wa.me"]')].map(a=>a.href), n:d.querySelectorAll('.resumo-dia .item').length}})()`);
+    ok(am.aberto && am.tit === 'Vencimentos de amanhã' && am.busca === '?demo', `Notificação da noite abre os vencimentos de amanhã (${am.n} linhas)`);
+    ok(am.lembrar.every(u => /^https:\/\/wa\.me\/55\d{10,11}\?text=Ol%C3%A1/.test(u)), `Lembrete pelo WhatsApp para quem paga amanhã (${am.lembrar.length})`);
+    await foto('d01f_resumo_amanha', false);
+    await clicar('#dlg [data-a="fechar"]');
+
     await clicar('[data-a="nav"][data-v="agenda"]'); await espera(300);
     ok(await transborda() <= 0, 'Agenda sem rolagem lateral no computador');
     await foto('d02_agenda');
@@ -326,6 +363,47 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await clicar('#dlg [data-a="fechar"]');
     await clicar('[data-a="nav"][data-v="mais"]'); await espera(300);
     await foto('d08_configuracoes');
+
+    // Alterar senha (na demonstração, só a tela e as conferências)
+    await clicar('.painel [data-a="senha"]'); await espera(300);
+    ok(await avaliar(`(()=>{const f=document.querySelector('#dlg form[data-f="senha"]'); return !!f && f.querySelector('[name=atual]').autocomplete==='current-password' && f.querySelectorAll('[autocomplete="new-password"]').length===2})()`),
+      'Alterar senha: a atual e a nova duas vezes');
+    await avaliar(`(()=>{const f=document.querySelector('#dlg form[data-f="senha"]'); f.atual.value='velha123'; f.nova.value='nova12345'; f.nova2.value='outra12345'; f.requestSubmit();})()`); await espera(300);
+    ok(await avaliar(`(()=>{const t=document.querySelector('#dlg-toasts .toast.erro'); return document.getElementById('dlg').open && !!t && /não são iguais/.test(t.textContent) && t.getClientRects().length > 0})()`),
+      'Senhas novas diferentes: avisa por cima da janela e não grava');
+    await foto('d08b_alterar_senha', false);
+    await avaliar(`(()=>{const f=document.querySelector('#dlg form[data-f="senha"]'); f.nova2.value='nova12345'; f.requestSubmit();})()`); await espera(400);
+    ok(await avaliar(`!document.getElementById('dlg').open && /senha não muda de verdade/.test(document.getElementById('toasts').textContent)`), 'Senha nova conferida e gravada (na demonstração, só a mensagem)');
+
+    // Notificações no celular: os horários, a opção de esconder nomes e o exemplo da demonstração
+    ok(await avaliar(`(()=>{const p=document.getElementById('painel-avisos'); return !!p && /9h/.test(p.textContent) && /21h/.test(p.textContent) && !!p.querySelector('[data-a="avisos-exemplo"]') && !!p.querySelector('[name=detalhes]:checked')})()`),
+      'Painel de notificações com 9h e 21h e o exemplo');
+    // o Chrome sem tela não guarda notificações: o teste registra o que o aplicativo manda mostrar
+    await cdp('Browser.grantPermissions', { permissions: ['notifications'], origin: new URL(BASE).origin });
+    await avaliar(`(()=>{window.__notifs=[]; const o=ServiceWorkerRegistration.prototype.showNotification;
+      ServiceWorkerRegistration.prototype.showNotification=function(t,op){ window.__notifs.push(t+' | '+(op&&op.body||'')+' | '+(op&&op.badge||'')); return o.call(this,t,op); };})()`);
+    await clicar('[data-a="avisos-exemplo"]'); await espera(1500);
+    const notif = await avaliar(`window.__notifs`);
+    ok(notif.length === 1 && /^(Hoje: |Parcelas em atraso|Vencimentos de hoje)/.test(notif[0]) && /badge-96\.png$/.test(notif[0]) && /Exemplo enviado/.test(await avaliar(`document.getElementById('toasts').textContent`)),
+      `Notificação de exemplo mostrada no aparelho (${notif[0] || 'nenhuma'})`);
+
+    // Backup em planilha: uma aba de resumo e uma por cliente (conferida por dentro com o teste_planilha.py)
+    await avaliar(`(()=>{window.__arqs=[]; const o=HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click=function(){ if(this.download && /\\.xlsx$/.test(this.download)){ const nome=this.download;
+        fetch(this.href).then(r=>r.blob()).then(b=>new Promise(ok=>{const f=new FileReader(); f.onload=()=>ok(f.result); f.readAsDataURL(b);}))
+          .then(u=>window.__arqs.push({nome, url:u})); return; } return o.call(this); };})()`);
+    await clicar('[data-a="backup-xlsx"]');
+    let planilha = null;
+    for (let i = 0; i < 40 && !planilha; i++) { await espera(500); planilha = await avaliar(`window.__arqs.find(a=>/\\.xlsx$/.test(a.nome)) || null`); }
+    ok(planilha && /^CredFlux_backup_\d{4}-\d{2}-\d{2}\.xlsx$/.test(planilha.nome) && planilha.url.length > 8000, `Backup em planilha gerado (${planilha?.nome})`);
+    if (planilha) {
+      const arq = path.join(SAIDA, 'backup.xlsx');
+      fs.writeFileSync(arq, Buffer.from(planilha.url.split(',')[1], 'base64'));
+      const py = spawnSync('python', [path.join(__dirname, 'teste_planilha.py'), arq], { encoding: 'utf8', env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+      for (const l of (py.stdout || '').trim().split(/\r?\n/).filter(Boolean)) verif.push(l);
+      if (py.status !== 0 && !/FALHA/.test(py.stdout || '')) verif.push('FALHA Conferência da planilha: ' + String(py.stderr || py.error?.message || '').slice(0, 400));
+    }
+
     await clicar('[data-a="nav"][data-v="assinatura"]'); await espera(1000);
     await foto('d09_assinatura');
 
@@ -372,8 +450,10 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await clicar('[data-a="nav"][data-v="mais"]'); await espera(300);
     ok(await visivel('.tit-linha [data-a="sair"]'), 'Sair no topo de Configurações no celular');
     await foto('m16_configuracoes_sair', false);
-    await clicar('.tit-linha [data-a="sair"]'); await espera(2500);
-    ok(await avaliar(`!!document.querySelector('form[data-f="acesso"]') && !localStorage.credflux_demo_v2`), 'Sair encerra a demonstração e volta à tela de acesso');
+    await clicar('.tit-linha [data-a="sair"]');
+    let saiu = false;
+    for (let i = 0; i < 24 && !saiu; i++) { await espera(500); saiu = await avaliar(`!!document.querySelector('form[data-f="acesso"]') && !localStorage.credflux_demo_v2`).catch(() => false); }
+    ok(saiu, 'Sair encerra a demonstração e volta à tela de acesso');
 
     // Tela inicial (acesso), celular e computador
     await cdp('Page.navigate', { url: BASE }); await espera(2500);
@@ -394,6 +474,15 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     ok(await avaliar(`(()=>{const c=document.querySelector('form[data-f="confirmar"] input.codigo'); return !!c && c.autocomplete==='one-time-code' && c.inputMode==='numeric' && !!document.querySelector('[data-a="reenviar-codigo"]') && /credfluxapp@gmail\\.com/.test(document.querySelector('.cartao').textContent)})()`),
       'Tela "Confirme seu e-mail" com o campo do código e o reenvio');
     await foto('d00c_confirmar_email');
+    // Esqueci a senha: código no e-mail e a senha nova criada no próprio CredFlux (só a tela; nada vai ao Supabase)
+    await clicar('[data-a="acesso"][data-m="esqueci"]'); await espera(300);
+    ok(await avaliar(`document.querySelector('form[data-f="acesso"] button.pri')?.textContent === 'Enviar código' && /código de 6 dígitos/.test(document.querySelector('.ac-lado .cartao').textContent)`),
+      'Esqueci a senha manda um código, sem link');
+    await clicar('[data-a="acesso"][data-m="redefinir"]'); await espera(300);
+    ok(await avaliar(`(()=>{const f=document.querySelector('form[data-f="redefinir"]'); return !!f && f.querySelector('input.codigo')?.autocomplete==='one-time-code' && f.querySelectorAll('input[type=password][autocomplete="new-password"]').length===2
+      && !!document.querySelector('[data-a="reenviar-codigo"][data-tipo="senha"]') && /credfluxapp@gmail\\.com/.test(document.querySelector('.ac-lado .cartao').textContent) && /Criar acesso/.test(document.querySelector('.ac-lado .cartao').textContent)})()`),
+      'Tela "Criar nova senha" com o código, a senha nova repetida, o reenvio e o aviso para quem foi convidado');
+    await foto('d00d_criar_nova_senha');
     await esquema('dark');
     await cdp('Page.navigate', { url: BASE }); await espera(2500);
     ok(await avaliar(`document.documentElement.dataset.tema`) === 'escuro' && await avaliar(`getComputedStyle(document.querySelector('.ac-lado')).backgroundColor`) === 'rgb(29, 32, 38)',

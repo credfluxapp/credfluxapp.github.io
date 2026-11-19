@@ -1,6 +1,7 @@
 <!-- Supabase › Authentication › Emails › Templates › "Reset Password"
-     Assunto (Subject): Crie uma nova senha no CredFlux
-     Cole tudo abaixo desta linha no campo "Message body". -->
+     Assunto (Subject): Seu código para criar uma nova senha no CredFlux
+     Cole tudo abaixo desta linha no campo "Message body". O e-mail leva só o código (sem link):
+     a pessoa digita o código na tela "Criar nova senha" do CredFlux. -->
 <div style="margin:0;padding:24px 12px;background:#F4F6F5;font-family:Arial,Helvetica,sans-serif;color:#1B212D">
   <div style="max-width:480px;margin:0 auto;background:#FFFFFF;border:1px solid #E4E7EC;border-radius:14px;overflow:hidden">
     <div style="background:#20201F;padding:18px 24px">
@@ -8,9 +9,9 @@
     </div>
     <div style="padding:26px 24px">
       <h1 style="margin:0 0 12px;font-size:20px">Nova senha</h1>
-      <p style="margin:0 0 20px;font-size:15px;line-height:1.5">Recebemos um pedido para criar uma nova senha no CredFlux. Toque no botão abaixo para continuar:</p>
-      <p style="margin:0 0 20px"><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#C8EE44;color:#1B212D;font-weight:700;font-size:15px;text-decoration:none;border-radius:10px;padding:12px 20px">Criar nova senha</a></p>
-      <p style="margin:0;font-size:13px;line-height:1.5;color:#646F82">O link vale por 1 hora. Se você não pediu, ignore este e-mail: a sua senha continua a mesma.</p>
+      <p style="margin:0 0 18px;font-size:15px;line-height:1.5">Recebemos um pedido para criar uma nova senha no CredFlux. Digite este código na tela "Criar nova senha":</p>
+      <p style="margin:0 0 18px;padding:16px;border-radius:10px;background:#F8F8F8;text-align:center;font-size:32px;font-weight:700;letter-spacing:8px">{{ .Token }}</p>
+      <p style="margin:0;font-size:13px;line-height:1.5;color:#646F82">O código vale por 1 hora. Se você não pediu, ignore este e-mail: a sua senha continua a mesma.</p>
       <p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:#646F82">Todos os dados são protegidos por criptografia, com segurança, discrição e total sigilo.</p>
     </div>
   </div>
