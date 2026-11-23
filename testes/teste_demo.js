@@ -98,7 +98,9 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await cdp('Page.navigate', { url: BASE + '?demo' }); await espera(1500);
     // Resumo do dia ao abrir: a demonstração sempre tem uma parcela em atraso
     const resumo = await avaliar(`(()=>{const d=document.getElementById('dlg'); return {aberto:d.open, tit:d.querySelector('.dlg-cab h2')?.textContent, hoje:!!d.querySelector('.rd-cab'), atraso:!!d.querySelector('.rd-atraso'), marca:!!document.querySelector('[data-in="resumo-abrir"]:checked')}})()`);
-    ok(resumo.aberto && resumo.tit === 'Resumo do dia' && resumo.hoje && resumo.atraso && resumo.marca, `Resumo do dia abre ao entrar, com hoje e os atrasos (${resumo.tit})`);
+    // depois das 18h (HORA_NOITE), com parcela amanhã e nada hoje, ele abre por "Vencimentos de amanhã" e mantém hoje e os atrasos
+    const titResumo = new Date().getHours() >= 18 ? ['Resumo do dia', 'Vencimentos de amanhã'] : ['Resumo do dia'];
+    ok(resumo.aberto && titResumo.includes(resumo.tit) && resumo.hoje && resumo.atraso && resumo.marca, `Resumo do dia abre ao entrar, com hoje e os atrasos (${resumo.tit})`);
     await foto('m00r_resumo_dia', false);
     await clicar('#dlg [data-a="fechar"]');
     ok(await avaliar(`/^\\d{4}-\\d{2}-\\d{2}:(dia|noite)$/.test(localStorage.credflux_resumo_visto_demo || '')`), 'O resumo fica marcado como visto nesta parte do dia');
@@ -271,6 +273,91 @@ const verif = []; const ok = (cond, msg) => { verif.push((cond ? 'OK   ' : 'FALH
     await avaliar(`document.getElementById('f-aporte').requestSubmit()`); await espera(500);
     ok(await avaliar(`JSON.parse(localStorage.credflux_demo_v2).aportes.some(a=>a.modalidade==='fixa' && a.prazo_dias===30 && a.valor===1000)`), 'Crédito de taxa fixa gravado com o prazo');
     await clicar('#dlg [data-a="fechar"]');
+
+    // Créditos: filtro pelo vencimento das parcelas (hoje, semanas de domingo a sábado, quinzenas, meses, ano e datas escolhidas)
+    const isoT = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const hT = new Date(); hT.setHours(12, 0, 0, 0); const hojeT = isoT(hT);
+    const diasT = (s, k) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + k); return isoT(d); };
+    const iniMesT = k => isoT(new Date(hT.getFullYear(), hT.getMonth() + k, 1)); const fimMesK = k => isoT(new Date(hT.getFullYear(), hT.getMonth() + k + 1, 0));
+    const domT = diasT(hojeT, -hT.getDay()); const fimMesT = fimMesK(0);
+    const faixasT = { hoje: [hojeT, hojeT], semana: [domT, diasT(domT, 6)], proxsem: [diasT(domT, 7), diasT(domT, 13)], semant: [diasT(domT, -7), diasT(domT, -1)],
+      q1: [iniMesT(0), hojeT.slice(0, 8) + '15'], q2: [hojeT.slice(0, 8) + '16', fimMesT], mes: [iniMesT(0), fimMesT],
+      proxmes: [iniMesT(1), fimMesK(1)], mesant: [iniMesT(-1), fimMesK(-1)], ano: [hojeT.slice(0, 4) + '-01-01', hojeT.slice(0, 4) + '-12-31'] };
+    const proxT = faixasT.proxsem;
+    const curtaT = s => s.slice(8) + '/' + s.slice(5, 7);
+    const faixaT = ([de, ate]) => (de.slice(0, 7) === ate.slice(0, 7) ? `${+de.slice(8)} a ${curtaT(ate)}` : `${curtaT(de)} a ${curtaT(ate)}`);
+    const mudarEm = (form, nome, v) => avaliar(`(()=>{const e=document.querySelector('form[data-f="${form}"] [name=${nome}]'); e.value=${JSON.stringify(v)}; e.dispatchEvent(new Event('change',{bubbles:true})); return e.value})()`);
+    const opcData = await avaliar(`[...document.querySelectorAll('form[data-f="aportes"] select[name=data] option')].map(o=>[o.value,o.textContent])`);
+    const rotT = Object.fromEntries(opcData); const mmT = hojeT.slice(5, 7);
+    const rotSelT = await avaliar(`document.querySelector('form[data-f="aportes"] select[name=data]').closest('label').firstChild.textContent.trim()`);
+    ok(opcData.length === 12 && rotSelT === 'Vencimento das parcelas' && await avaliar(`document.querySelector('form[data-f="aportes"] select[name=data]').value`) === 'tudo', `Créditos: filtro "${rotSelT}" começa em Todas as datas (${opcData.length} opções)`);
+    ok(rotT.q1 === `1ª quinzena (1 a 15/${mmT})` && rotT.q2 === `2ª quinzena (16 a ${fimMesT.slice(8)}/${mmT})`, `Quinzenas do mês corrente com as datas (${rotT.q1}; ${rotT.q2})`);
+    ok(rotT.semana === `Esta semana (${faixaT(faixasT.semana)})` && rotT.proxsem === `Próxima semana (${faixaT(proxT)})` && rotT.semant === `Semana passada (${faixaT(faixasT.semant)})` && rotT.hoje === `Hoje (${curtaT(hojeT)})`, `Semana de domingo a sábado (${rotT.semana}; ${rotT.proxsem}; ${rotT.semant})`);
+    await mudarEm('aportes', 'status', 'todos'); await espera(200);
+    // só a tela de Créditos: a janela fechada guarda o último conteúdo (com outros totais), e ele fica de fora
+    const telaT = () => avaliar(`(()=>{const fora=s=>[...document.querySelectorAll(s)].filter(e=>!e.closest('dialog')); return {ids:fora('button.item[data-a="ap-ver"]').map(b=>b.dataset.id),
+      valores:fora('button.item[data-a="ap-ver"] .item-val b').map(e=>Number(e.textContent.replace(/[^0-9]/g,''))),
+      pills:fora('button.item[data-a="ap-ver"] .item-val .pill').map(e=>e.textContent),
+      kpiRot:fora('.mini-kpis span').map(e=>e.textContent),
+      kpis:fora('.mini-kpis b').map(e=>Number(e.textContent.replace(/[^0-9]/g,'')))}})()`);
+    const nTudo = (await telaT()).ids.length;
+    const dadosT = await avaliar(`(()=>{const d=JSON.parse(localStorage.credflux_demo_v2); return {aps:d.aportes.map(a=>[a.id, a.cliente_id]), cli:Object.fromEntries(d.clientes.map(c=>[c.id,c.nome])),
+      ps:d.parcelas.map(p=>({ap:p.aporte_id, num:p.num, v:p.vencimento, valor:Number(p.valor), rec:p.recebido_em||null, vr:Number(p.valor_recebido||0)}))}})()`);
+    const centT = x => Math.round(x * 100);
+    // o esperado, calculado aqui com os dados guardados: créditos com parcela no período, na ordem do primeiro vencimento
+    // (e do nome), o que falta receber e a etiqueta de cada linha, e os totais do período
+    const esperadoT = (de, ate) => {
+      const linhas = dadosT.aps.map(([id, cli]) => ({ id, nome: dadosT.cli[cli] || '', pp: dadosT.ps.filter(p => p.ap === id && p.v >= de && p.v <= ate).sort((x, y) => x.v.localeCompare(y.v) || x.num - y.num) }))
+        .filter(l => l.pp.length).sort((x, y) => x.pp[0].v.localeCompare(y.pp[0].v) || x.nome.localeCompare(y.nome, 'pt-BR'));
+      for (const l of linhas) {
+        const ab = l.pp.filter(p => !p.rec); const p1 = ab[0]; const mais = ab.length > 1 ? ` e mais ${ab.length - 1}` : '';
+        l.valor = centT(p1 ? ab.reduce((s, p) => s + p.valor, 0) : l.pp.reduce((s, p) => s + p.vr, 0));
+        l.pill = !p1 ? (l.pp.length > 1 ? 'Recebidas' : 'Recebida') : p1.v < hojeT ? `venceu ${curtaT(p1.v)}${mais}` : p1.v === hojeT ? `Vence hoje${mais}` : `vence ${curtaT(p1.v)}${mais}`;
+      }
+      const pps = linhas.flatMap(l => l.pp); const ab = pps.filter(p => !p.rec);
+      const kpis = [pps.reduce((s, p) => s + (p.rec ? p.vr : p.valor), 0), pps.filter(p => p.rec).reduce((s, p) => s + p.vr, 0),
+        ab.reduce((s, p) => s + p.valor, 0), ab.filter(p => p.v < hojeT).reduce((s, p) => s + p.valor, 0)].map(centT);
+      return { ids: linhas.map(l => l.id), valores: linhas.map(l => l.valor), pills: linhas.map(l => l.pill), kpis };
+    };
+    const resT = {}; let certosT = true; const pillsVistas = new Set();
+    for (const [k, [de, ate]] of Object.entries(faixasT)) {
+      await mudarEm('aportes', 'data', k); await espera(150);
+      const t = await telaT(); const e = esperadoT(de, ate);
+      const igual = ['ids', 'valores', 'pills', 'kpis'].every(c => JSON.stringify(t[c]) === JSON.stringify(e[c])) && t.kpiRot.join('|') === 'Vence no período|Já recebido|A receber|Em atraso';
+      t.pills.forEach(p => pillsVistas.add(p.split(' ')[0]));
+      resT[k] = igual ? t.ids.length : `difere: tela ${JSON.stringify(t)} × esperado ${JSON.stringify(e)}`;
+      if (!igual) certosT = false;
+    }
+    ok(certosT && nTudo === dadosT.aps.length && Object.values(resT).some(n => n > 0 && n < nTudo), `Créditos pelo vencimento: lista, ordem, valor e etiqueta de cada linha e totais do período (todas: ${nTudo}; ${JSON.stringify(resT)})`);
+    ok(['venceu', 'vence'].every(p => pillsVistas.has(p)), `Etiquetas do período testadas: ${[...pillsVistas].join(', ')}`);
+    await mudarEm('aportes', 'data', 'tudo'); await espera(150);
+    ok((await telaT()).kpiRot.join('|') === 'Concedido|Já recebido|A receber|Lucro previsto', 'Sem período, os totais voltam a ser dos créditos (Concedido e Lucro previsto)');
+    await mudarEm('aportes', 'data', 'custom'); await espera(150);
+    const deAteT = await avaliar(`!!document.querySelector('form[data-f="aportes"] input[name=de]') && !!document.querySelector('form[data-f="aportes"] input[name=ate]')`);
+    await mudarEm('aportes', 'de', faixasT.q2[0]); await espera(150); await mudarEm('aportes', 'ate', faixasT.q2[1]); await espera(150);
+    const tcT = await telaT();
+    ok(deAteT && JSON.stringify(tcT.ids) === JSON.stringify(esperadoT(...faixasT.q2).ids), `Escolher datas filtra pelo vencimento (${tcT.ids.length} créditos de ${curtaT(faixasT.q2[0])} a ${curtaT(faixasT.q2[1])})`);
+    const largT = await avaliar(`(()=>{const f=document.querySelector('form[data-f="aportes"]').getBoundingClientRect().width; const l=document.querySelector('form[data-f="aportes"] label.largo').getBoundingClientRect().width; return [Math.round(f), Math.round(l)]})()`);
+    ok(largT[0] === largT[1] && await transborda() <= 0, `No celular, "Vencimento das parcelas" ocupa a largura toda (${largT[1]} de ${largT[0]}px), sem rolagem lateral`);
+    await mudarEm('aportes', 'status', 'ativos'); await mudarEm('aportes', 'data', 'q2'); await espera(200);
+    await foto('m10c_creditos_quinzena');
+    await mudarEm('aportes', 'data', 'tudo'); await espera(150);
+
+    // Agenda: semana e quinzenas também no Período, pelo vencimento
+    await clicar('[data-a="nav"][data-v="agenda"]'); await espera(300);
+    const agAntesT = await avaliar(`['periodo','situacao'].map(n=>document.querySelector('form[data-f="agenda"] [name='+n+']').value)`);
+    const rotAgT = await avaliar(`Object.fromEntries([...document.querySelectorAll('form[data-f="agenda"] select[name=periodo] option')].map(o=>[o.value,o.textContent]))`);
+    ok(rotAgT.q1 === rotT.q1 && rotAgT.q2 === rotT.q2 && rotAgT.semana === rotT.semana && rotAgT.proxsem === `Próxima semana (${faixaT(proxT)})`, `Agenda com semana e quinzenas no Período (${rotAgT.proxsem})`);
+    await mudarEm('agenda', 'situacao', 'todas'); await espera(150);
+    const vencT = await avaliar(`JSON.parse(localStorage.credflux_demo_v2).parcelas.map(p=>p.vencimento)`);
+    const contAgT = {}; let certosAgT = true;
+    for (const [k, [de, ate]] of [['semana', faixasT.semana], ['proxsem', proxT], ['q1', faixasT.q1], ['q2', faixasT.q2]]) {
+      await mudarEm('agenda', 'periodo', k); await espera(150);
+      const n = await avaliar(`document.querySelectorAll('.grupo .item').length`); const esperado = vencT.filter(v => v >= de && v <= ate).length;
+      contAgT[k] = n === esperado ? n : `${n} (esperado ${esperado})`; if (n !== esperado) certosAgT = false;
+    }
+    ok(certosAgT && Object.values(contAgT).some(n => n > 0), `Agenda filtra a semana e as quinzenas pelo vencimento (${JSON.stringify(contAgT)})`);
+    await mudarEm('agenda', 'periodo', agAntesT[0]); await mudarEm('agenda', 'situacao', agAntesT[1]); await espera(150);
 
     await clicar('[data-a="nav"][data-v="mais"]'); await espera(300);
     ok(await avaliar(`!!document.querySelector('form[data-f="acordo"] textarea[name=termos_acordo]') && document.querySelector('.tit').textContent === 'Configurações'`), 'Configurações mostra os dados do acordo');

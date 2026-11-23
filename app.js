@@ -136,7 +136,7 @@ const S = {
   cli: new Map(), ap: new Map(), parcPorAp: new Map(),
   view: 'inicio', grafico: 'meses',
   f: { periodo: 'p30', de: '', ate: '', cliente: '', situacao: 'pendente', agrupar: 'dia' },
-  fCli: '', fAp: { status: 'ativos', cliente: '', busca: '' },
+  fCli: '', fAp: { status: 'ativos', cliente: '', busca: '', data: 'tudo', de: '', ate: '' },
   oCli: ['nome', 'venc', 'valor'].includes(lerLocal(CHAVE_ORDEM_CLI)) ? lerLocal(CHAVE_ORDEM_CLI) : 'nome',
   form: null,
 };
@@ -590,16 +590,30 @@ function listaAgrupada(ps, { limite = Infinity, ate = '9999-12-31' } = {}) {
 }
 
 // Agenda ------------------------------------------------------------------------
-const PERIODOS = [['atraso', 'Em atraso'], ['hoje', 'Hoje'], ['p7', 'Próximos 7 dias'], ['p15', 'Próximos 15 dias'],
+const PERIODOS = [['atraso', 'Em atraso'], ['hoje', 'Hoje'], ['semana', 'Esta semana'], ['proxsem', 'Próxima semana'],
+  ['p7', 'Próximos 7 dias'], ['p15', 'Próximos 15 dias'],
   ['p30', 'Próximos 30 dias'], ['p60', 'Próximos 60 dias'], ['p90', 'Próximos 90 dias'], ['p180', 'Próximos 6 meses'],
-  ['p365', 'Próximos 12 meses'], ['mes', 'Este mês'], ['proxmes', 'Próximo mês'], ['mesant', 'Mês passado'],
+  ['p365', 'Próximos 12 meses'], ['q1', '1ª quinzena'], ['q2', '2ª quinzena'], ['mes', 'Este mês'], ['proxmes', 'Próximo mês'], ['mesant', 'Mês passado'],
   ['u30', 'Últimos 30 dias'], ['tudo', 'Tudo'], ['custom', 'Escolher datas']];
+
+// Semana de domingo a sábado, como "Esta semana" no Início. Quinzenas do mês corrente: do dia 1 ao 15 e do 16 ao último dia.
+const domingo = s => addDias(s, -parseISO(s).getDay());
+// "22 a 28/11"; com meses diferentes, "29/11 a 05/12".
+const faixaCurta = ([de, ate]) => (de.slice(0, 7) === ate.slice(0, 7) ? `${+de.slice(8)} a ${dataCurta(ate)}` : `${dataCurta(de)} a ${dataCurta(ate)}`);
+const COM_FAIXA = ['semana', 'semant', 'proxsem', 'q1', 'q2'];
+const rotPeriodo = (v, t) => (COM_FAIXA.includes(v) ? `${t} (${faixaCurta(intervalo({ periodo: v }))})` : t);
 
 function intervalo(f) {
   const h = hoje();
   switch (f.periodo) {
     case 'hoje': return [h, h];
     case 'atraso': return ['0000-01-01', addDias(h, -1)];
+    case 'semana': return [domingo(h), addDias(domingo(h), 6)];
+    case 'semant': return [addDias(domingo(h), -7), addDias(domingo(h), -1)];
+    case 'proxsem': return [addDias(domingo(h), 7), addDias(domingo(h), 13)];
+    case 'q1': return [inicioMes(h), h.slice(0, 8) + '15'];
+    case 'q2': return [h.slice(0, 8) + '16', fimMes(h)];
+    case 'ano': return [h.slice(0, 4) + '-01-01', h.slice(0, 4) + '-12-31'];
     case 'mes': return [inicioMes(h), fimMes(h)];
     case 'proxmes': return [inicioMes(h, 1), fimMes(h, 1)];
     case 'mesant': return [inicioMes(h, -1), fimMes(h, -1)];
@@ -637,7 +651,7 @@ function viewAgenda() {
   return `
   <div class="tit-linha"><h1 class="tit">Agenda de recebimentos</h1></div>
   <form class="filtros" data-f="agenda">
-    <label>Período<select name="periodo">${PERIODOS.map(([v, t]) => opt(v, t, f.periodo)).join('')}</select></label>
+    <label class="largo">Período<select name="periodo">${PERIODOS.map(([v, t]) => opt(v, rotPeriodo(v, t), f.periodo)).join('')}</select></label>
     ${f.periodo === 'custom' ? `<label>De<input type="date" name="de" value="${f.de}"></label><label>Até<input type="date" name="ate" value="${f.ate}"></label>` : ''}
     <label>Cliente<select name="cliente">${opt('', 'Todos', f.cliente)}${S.dados.clientes.map(c => opt(c.id, c.nome, f.cliente)).join('')}</select></label>
     <label>Situação<select name="situacao">${opt('pendente', 'A receber', f.situacao)}${opt('recebida', 'Recebidas', f.situacao)}${opt('todas', 'Todas', f.situacao)}</select></label>
@@ -754,47 +768,98 @@ function formCliente(id) {
 }
 
 // Aportes -------------------------------------------------------------------------
-function listaAportes(aps) {
+// noPeriodo (opcional): parcelas de cada crédito que vencem no período do filtro de Créditos. Com ele, o valor
+// e a etiqueta de cada linha falam só dessas parcelas: o que falta receber e o primeiro vencimento em aberto.
+function listaAportes(aps, noPeriodo) {
   if (!aps.length) return '';
+  const h = hoje();
   return `<div class="lista">${aps.map(a => {
     const r = resumoAporte(a); const c = S.cli.get(a.cliente_id);
-    const st = r.quitado ? pill('verde', 'Quitado')
-      : r.atrasadas.length ? pill('vermelha', `${r.atrasadas.length} em atraso`)
-      : r.proxima ? pill('', `próx. ${dataCurta(r.proxima.vencimento)}`) : '';
+    const pp = noPeriodo?.get(a.id);
+    let st, val = r.aReceber;
+    if (pp) {
+      const abertas = pp.filter(p => !p.recebido_em); const p1 = abertas[0];
+      const mais = abertas.length > 1 ? ` e mais ${abertas.length - 1}` : '';
+      val = p1 ? soma(abertas, p => p.valor) : soma(pp, p => p.valor_recebido);
+      st = !p1 ? pill('verde', pp.length > 1 ? 'Recebidas' : 'Recebida')
+        : p1.vencimento < h ? pill('vermelha', `venceu ${dataCurta(p1.vencimento)}${mais}`)
+        : p1.vencimento === h ? pill('amarela', `Vence hoje${mais}`)
+        : pill('', `vence ${dataCurta(p1.vencimento)}${mais}`);
+    } else {
+      st = r.quitado ? pill('verde', 'Quitado')
+        : r.atrasadas.length ? pill('vermelha', `${r.atrasadas.length} em atraso`)
+        : r.proxima ? pill('', `próx. ${dataCurta(r.proxima.vencimento)}`) : '';
+    }
     return `<button class="item" data-a="ap-ver" data-id="${a.id}">
       ${avatar(c)}
       <span class="item-pr"><span class="item-tit">${esc(c?.nome || '?')} · ${moeda(a.valor)}</span>
         <span class="item-sub">${dataBR(a.data_aporte)} · ${fmtTaxa(a)} · ${C.MODALIDADES_CURTAS[a.modalidade]} · ${r.pagas}/${r.ps.length} recebidas</span></span>
-      <span class="item-val"><b>${moeda(r.aReceber)}</b>${st}</span>
+      <span class="item-val"><b>${moeda(val)}</b>${st}</span>
     </button>`;
   }).join('')}</div>`;
 }
 
+// Créditos: filtro pelo vencimento das parcelas (pedido de 22/11).
+function opcoesVencCredito() {
+  const h = hoje(); const mes = k => MESL[+inicioMes(h, k).slice(5, 7) - 1];
+  return [['tudo', 'Todas as datas'], ['hoje', `Hoje (${dataCurta(h)})`], ['semana', 'Esta semana'], ['proxsem', 'Próxima semana'], ['semant', 'Semana passada'],
+    ['q1', '1ª quinzena'], ['q2', '2ª quinzena'], ['mes', `Este mês (${mes(0)})`], ['proxmes', `Próximo mês (${mes(1)})`], ['mesant', `Mês passado (${mes(-1)})`],
+    ['ano', `Este ano (${h.slice(0, 4)})`], ['custom', 'Escolher datas']].map(([v, t]) => [v, rotPeriodo(v, t)]);
+}
+
 function viewAportes() {
-  const f = S.fAp; const b = norm(f.busca);
+  const f = S.fAp; const b = norm(f.busca); const h = hoje();
+  // Com um período escolhido, entram só os créditos com parcela vencendo nele, em ordem de vencimento,
+  // e os totais do alto passam a ser dessas parcelas.
+  const porVenc = Boolean(f.data) && f.data !== 'tudo';
+  const [de, ate] = intervalo({ periodo: f.data, de: f.de, ate: f.ate });
+  const noPeriodo = new Map();
+  if (porVenc) for (const a of S.dados.aportes) {
+    const pp = (S.parcPorAp.get(a.id) || []).filter(p => p.vencimento >= de && p.vencimento <= ate)
+      .sort((x, y) => x.vencimento.localeCompare(y.vencimento) || x.num - y.num);
+    if (pp.length) noPeriodo.set(a.id, pp);
+  }
+  const nomeDe = a => S.cli.get(a.cliente_id)?.nome || '';
   const aps = S.dados.aportes.filter(a => {
     if (f.cliente && a.cliente_id !== f.cliente) return false;
+    if (porVenc && !noPeriodo.has(a.id)) return false;
     const r = resumoAporte(a);
     if (f.status === 'ativos' && r.quitado) return false;
     if (f.status === 'quitados' && !r.quitado) return false;
     if (f.status === 'atraso' && !r.atrasadas.length) return false;
-    return !b || norm(S.cli.get(a.cliente_id)?.nome).includes(b);
-  }).sort((x, y) => y.data_aporte.localeCompare(x.data_aporte));
+    return !b || norm(nomeDe(a)).includes(b);
+  }).sort(porVenc
+    ? (x, y) => noPeriodo.get(x.id)[0].vencimento.localeCompare(noPeriodo.get(y.id)[0].vencimento) || nomeDe(x).localeCompare(nomeDe(y), 'pt-BR')
+    : (x, y) => y.data_aporte.localeCompare(x.data_aporte));
   const opt = (v, t, sel) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${esc(t)}</option>`;
-  const rs = aps.map(resumoAporte);
+  let kpis;
+  if (porVenc) {
+    const pps = aps.flatMap(a => noPeriodo.get(a.id));
+    const abertas = pps.filter(p => !p.recebido_em); const atraso = soma(abertas.filter(p => p.vencimento < h), p => p.valor);
+    kpis = `
+    <div><span>Vence no período</span><b>${moeda(soma(pps, p => (p.recebido_em ? p.valor_recebido : p.valor)))}</b></div>
+    <div><span>Já recebido</span><b>${moeda(soma(pps.filter(p => p.recebido_em), p => p.valor_recebido))}</b></div>
+    <div><span>A receber</span><b>${moeda(soma(abertas, p => p.valor))}</b></div>
+    <div class="${atraso ? 'ruim' : ''}"><span>Em atraso</span><b>${moeda(atraso)}</b></div>`;
+  } else {
+    const rs = aps.map(resumoAporte);
+    kpis = `
+    <div><span>Concedido</span><b>${moeda(soma(aps, a => a.valor))}</b></div>
+    <div><span>Já recebido</span><b>${moeda(soma(rs, r => r.recebido))}</b></div>
+    <div><span>A receber</span><b>${moeda(soma(rs, r => r.aReceber))}</b></div>
+    <div><span>Lucro previsto</span><b>${moeda(soma(rs, r => r.lucro))}</b></div>`;
+  }
   return `
   <div class="tit-linha"><h1 class="tit">Créditos</h1>${leitura() ? '' : '<button class="btn pri" data-a="ap-novo">+ Crédito</button>'}</div>
   <form class="filtros" data-f="aportes">
     <label>Situação<select name="status">${opt('ativos', 'Em andamento', f.status)}${opt('atraso', 'Com atraso', f.status)}${opt('quitados', 'Quitados', f.status)}${opt('todos', 'Todos', f.status)}</select></label>
+    <label class="largo">Vencimento das parcelas<select name="data">${opcoesVencCredito().map(([v, t]) => opt(v, t, f.data)).join('')}</select></label>
+    ${f.data === 'custom' ? `<label>De<input type="date" name="de" value="${esc(f.de)}"></label><label>Até<input type="date" name="ate" value="${esc(f.ate)}"></label>` : ''}
     <label>Cliente<select name="cliente">${opt('', 'Todos', f.cliente)}${S.dados.clientes.map(c => opt(c.id, c.nome, f.cliente)).join('')}</select></label>
   </form>
-  <div class="mini-kpis">
-    <div><span>Concedido</span><b>${moeda(soma(aps, a => a.valor))}</b></div>
-    <div><span>Já recebido</span><b>${moeda(soma(rs, r => r.recebido))}</b></div>
-    <div><span>A receber</span><b>${moeda(soma(rs, r => r.aReceber))}</b></div>
-    <div><span>Lucro previsto</span><b>${moeda(soma(rs, r => r.lucro))}</b></div>
+  <div class="mini-kpis">${kpis}
   </div>
-  ${listaAportes(aps) || '<p class="vazio-p">Nenhum crédito neste filtro.</p>'}`;
+  ${listaAportes(aps, porVenc ? noPeriodo : null) || '<p class="vazio-p">Nenhum crédito neste filtro.</p>'}`;
 }
 
 function verAporte(id) {
@@ -1665,7 +1730,9 @@ function abrirAjuda() {
     <h3>Atrasos e multa</h3>
     <p>A multa é por crédito e conta desde a parcela mais antiga em aberto: na taxa fixa, os juros do contrato ÷ 30 por dia; nas outras formas, o saldo × a taxa mensal ÷ 30 por dia. Ela pode ser dispensada ao receber. <b>Cobrar</b>, no Início, abre o WhatsApp do cliente em atraso; com mais de um cliente, abre a Agenda nos atrasos.</p>
     <h3>Agenda</h3>
-    <p>Filtre por período, cliente e situação, agrupe por dia ou por mês e baixe a planilha.</p>
+    <p>Filtre por período (hoje, semana, 1ª ou 2ª quinzena do mês, mês ou datas escolhidas), cliente e situação, agrupe por dia ou por mês e baixe a planilha.</p>
+    <h3>Créditos</h3>
+    <p>Filtre por situação, cliente e <b>vencimento das parcelas</b>: hoje, semana, 1ª ou 2ª quinzena do mês, mês, ano ou datas escolhidas. Com um período escolhido, aparecem os créditos com parcela vencendo nele, em ordem de vencimento; cada linha mostra o que falta receber no período, e os totais do alto passam a ser dessas parcelas (vence no período, já recebido, a receber e em atraso).</p>
     <h3>Clientes</h3>
     <p>Ordene a lista por nome, pelo vencimento mais próximo (os atrasados primeiro) ou pelo valor a receber. A escolha fica guardada neste aparelho.</p>
     <h3>Backup em planilha</h3>

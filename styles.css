@@ -555,7 +555,8 @@ button.item-pr:hover .item-tit, button.item:hover .item-tit { text-decoration: u
 .vazio-p.erro { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--sp-8); padding: var(--sp-16); color: var(--danger-text); }
 
 /* Agenda */
-.filtros { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--sp-12); }
+/* minmax(0, 1fr): o campo de data (De/Até) não alarga as colunas além da tela */
+.filtros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--sp-12); }
 .total-agenda {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-8); margin-bottom: var(--sp-24);
   padding: var(--sp-18) var(--sp-20); border-radius: var(--r-card); background: var(--surface-2);
@@ -748,7 +749,8 @@ input.codigo { font-size: 22px; font-weight: 700; letter-spacing: .35em; text-al
   .item:has(> .av) > .item-pr { grid-area: pr; }
   .item:has(> .av) > .item-val { grid-area: val; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: var(--sp-4) var(--sp-8); }
   .item:has(> .av) > .item-ac { grid-area: ac; }
-  .filtros > label:first-child { grid-column: 1 / -1; }
+  .filtros > label:first-child, .filtros > label.largo { grid-column: 1 / -1; }
+  .filtros input[type="date"] { padding-inline: var(--sp-10); }
   .banner.demo > span { flex-basis: 100%; }
   .painel { padding: var(--sp-16); }
   .aba { padding: var(--sp-8) var(--sp-4); }
@@ -816,7 +818,8 @@ input.codigo { font-size: 22px; font-weight: 700; letter-spacing: .35em; text-al
   .painel .lista > .item:hover, dialog .lista > .item:hover { box-shadow: none; }
   .item-val { flex-direction: row-reverse; align-items: center; gap: var(--sp-12); }
   .conteudo > .lista .item-val, .grupo .item-val { min-width: 13rem; justify-content: flex-start; }
-  .filtros { grid-template-columns: repeat(4, 1fr); }
+  .filtros { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .filtros > label.largo { grid-column: span 2; }
   .dados { grid-template-columns: 1fr 1fr; }
   .mini-kpis { grid-template-columns: repeat(4, 1fr); gap: var(--sp-12); }
   dialog:not(.larga) .mini-kpis { grid-template-columns: 1fr 1fr; }
